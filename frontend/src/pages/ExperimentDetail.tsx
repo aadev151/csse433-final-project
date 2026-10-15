@@ -157,7 +157,9 @@ function Results({ e, runs, signals }: { e: Experiment; runs: Run[]; signals: Si
   return (
     <Stack gap="md">
       <Group gap="sm" wrap="wrap">
+        <div style={{ maxWidth: '100%', overflowX: 'auto' }}>
         <SegmentedControl size="xs" value={metric} onChange={(v) => setMetric(v as MetricKey)} data={METRICS.map((m) => ({ value: m.value, label: m.label }))} />
+        </div>
         <Tooltip label="Log colour/axis scale makes small and huge errors visible together.">
           <SegmentedControl
             size="xs"

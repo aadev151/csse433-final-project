@@ -19,7 +19,8 @@ function Pill({ store, up, extra, pending }: { store: StoreName; up: boolean | n
         tt="none"
         fw={500}
         leftSection={<Dot up={up} />}
-        style={{ cursor: 'default' }}
+        style={{ cursor: 'default', overflow: 'visible', flexShrink: 0 }}
+        styles={{ label: { overflow: 'visible' } }}
       >
         {STORE_LABEL[store]}
         {extra ? ` · ${extra}` : ''}

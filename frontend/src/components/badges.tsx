@@ -7,7 +7,7 @@ import { DATASET_STATUS_COLOR, EXPERIMENT_STATUS_COLOR, RUN_STATUS_COLOR } from 
 export function SignalTypeBadge({ type, size = 'sm' }: { type: SignalType; size?: 'xs' | 'sm' | 'md' }) {
   const color = useSignalColor(type);
   return (
-    <Badge size={size} radius="sm" variant="light" color={color} tt="none" leftSection={<span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: color }} />}>
+    <Badge size={size} radius="sm" variant="light" color={color} tt="none" style={{ flexShrink: 0, overflow: 'visible' }} styles={{ label: { overflow: 'visible' } }} leftSection={<span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: color }} />}>
       {type}
     </Badge>
   );
