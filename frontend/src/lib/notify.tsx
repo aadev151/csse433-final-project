@@ -19,13 +19,13 @@ export function notifyWrite(write: WriteInfo, what?: string) {
 }
 
 /** Toast for a failed write, with a Retry action. */
-export function notifyError(err: unknown, retry?: () => void, what?: string) {
+export function notifyError(err: unknown, retry?: () => void, _what?: string) {
   const message = err instanceof ApiError || err instanceof Error ? err.message : String(err);
   const id = `err-${Date.now()}-${Math.random()}`;
   notifications.show({
     id,
     color: 'red',
-    title: what ? `Couldn't complete: ${what.toLowerCase()}` : 'Request failed',
+    title: "Couldn't save — the request failed",
     autoClose: 10_000,
     message: (
       <Group justify="space-between" wrap="nowrap" gap="sm">

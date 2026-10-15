@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import type { WriteInfo } from '../api/types';
+import { ApiError } from '../api/client';
 import { notifyError, notifyWrite } from '../lib/notify';
 
 interface Options<V, R> {
@@ -28,7 +29,9 @@ export function useWriteMutation<V, R extends { write: WriteInfo }>(opts: Option
     },
     onError: (err, vars) => {
       if (opts.onError?.(err, vars)) return;
-      notifyError(err, () => retryRef.current(vars), label(vars));
+      // 4xx means retrying the same request cannot succeed, so only offer Retry for network/5xx failures
+      const retryable = !(err instanceof ApiError && err.status >= 400 && err.status < 500);
+      notifyError(err, retryable ? () => retryRef.current(vars) : undefined, label(vars));
     },
   });
   retryRef.current = m.mutate;
