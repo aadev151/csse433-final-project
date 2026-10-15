@@ -118,7 +118,8 @@ function ReadingsExplorer({ run, signals, symbols, signalId, setSignalId }: { ru
     { group: 'running-total', items: signals.filter((s) => s.type === 'running-total').map((s) => ({ value: s.id, label: s.name })) },
   ].filter((g) => g.items.length);
 
-  const notStarted = run.status === 'queued' || run.status === 'waiting_for_cassandra';
+  const { cassandraUp } = useStoreStatus();
+  const notStarted = (run.status === 'queued' || run.status === 'waiting_for_cassandra') && run.progress.pct === 0;
 
   return (
     <Stack gap="sm">
@@ -139,12 +140,12 @@ function ReadingsExplorer({ run, signals, symbols, signalId, setSignalId }: { ru
       </Group>
       {!signal ? (
         <EmptyState title="Pick a signal" message="Choose a signal to explore its step-by-step readings." />
-      ) : notStarted ? (
-        <EmptyState title="No readings yet" message="This run has not started. Readings appear here as soon as it is replaying." />
-      ) : readings.isError && isCassandraDown(readings.error) ? (
+      ) : !cassandraUp || (readings.isError && isCassandraDown(readings.error)) ? (
         <Alert color="yellow" variant="light" title="Readings unavailable while Cassandra is down">
           {CASSANDRA_DOWN_TEXT}
         </Alert>
+      ) : notStarted ? (
+        <EmptyState title="No readings yet" message="This run has not started. Readings appear here as soon as it is replaying." />
       ) : readings.isError ? (
         <ErrorState error={readings.error} onRetry={() => readings.refetch()} title="Couldn't load readings" />
       ) : readings.isPending ? (
