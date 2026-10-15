@@ -7,7 +7,7 @@ import { notifyError, notifyWrite } from '../lib/notify';
 interface Options<V, R> {
   mutationFn: (vars: V) => Promise<R>;
   /** Short description of what happened, shown in the toast (e.g. "Signal created"). */
-  action: string | ((vars: V) => string);
+  action: string | ((vars: V, res?: R) => string);
   invalidate?: QueryKey[];
   onSuccess?: (res: R, vars: V) => void;
   /** Return true to suppress the default error toast (e.g. to show it inline instead). */
@@ -18,11 +18,11 @@ interface Options<V, R> {
 export function useWriteMutation<V, R extends { write: WriteInfo }>(opts: Options<V, R>) {
   const qc = useQueryClient();
   const retryRef = useRef<(v: V) => void>(() => undefined);
-  const label = (v: V) => (typeof opts.action === 'function' ? opts.action(v) : opts.action);
+  const label = (v: V, res?: R) => (typeof opts.action === 'function' ? opts.action(v, res) : opts.action);
   const m = useMutation<R, unknown, V>({
     mutationFn: opts.mutationFn,
     onSuccess: (res, vars) => {
-      notifyWrite(res.write, label(vars));
+      notifyWrite(res.write, label(vars, res));
       for (const key of opts.invalidate ?? []) qc.invalidateQueries({ queryKey: key });
       qc.invalidateQueries({ queryKey: ['health'] });
       opts.onSuccess?.(res, vars);
