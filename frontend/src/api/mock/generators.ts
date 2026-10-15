@@ -112,7 +112,7 @@ export function truthAt(ctx: SeriesContext, tMs: number): number {
 // Run report model
 // ---------------------------------------------------------------------------
 
-const CONSISTENCY_FACTOR = { ONE: 1, QUORUM: 0.035, ALL: 0.012 } as const;
+const CONSISTENCY_FACTOR = { ONE: 1, QUORUM: 0.012, ALL: 0.005 } as const;
 
 function jitter(key: string, spread = 0.15): number {
   return 1 + (hash01(hashString(key), 1) * 2 - 1) * spread;
