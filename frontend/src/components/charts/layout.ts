@@ -20,8 +20,8 @@ export function baseLayout(c: Colors, overrides: Partial<Layout> = {}): Partial<
     margin: { l: 60, r: 20, t: 40, b: 50 },
     hoverlabel: { bgcolor: c.surface, bordercolor: c.axis, font: { color: c.ink, size: 12 } },
     legend: { font: { color: c.inkSecondary, size: 11 }, orientation: 'h', y: -0.2 },
-    title: { font: { size: 14, color: c.ink }, x: 0, xanchor: 'left', y: 0.98 },
     ...overrides,
+    title: { font: { size: 14, color: c.ink }, x: 0, xanchor: 'left', y: 0.98, ...((overrides.title as object) ?? {}) },
     xaxis: { ...axis, ...(overrides.xaxis ?? {}) },
     yaxis: { ...axis, ...(overrides.yaxis ?? {}) },
   } as Partial<Layout>;
