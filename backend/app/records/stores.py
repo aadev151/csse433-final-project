@@ -1,6 +1,5 @@
 import copy
 
-from app.records.checks import require_record, require_record_type, require_str
 from app.records.models import STORE_NAMES
 
 
@@ -57,26 +56,21 @@ class InMemoryStore(RecordStore):
             raise StoreUnavailable(self.name)
 
     def put(self, record_type, record):
-        require_record_type(record_type)
-        require_record(record)
         self._check_up()
+        if "id" not in record or "version" not in record:
+            raise ValueError("record must contain id and version")
         self._records.setdefault(record_type, {})[record["id"]] = copy.deepcopy(record)
 
     def get(self, record_type, record_id):
-        require_record_type(record_type)
-        require_str("record_id", record_id)
         self._check_up()
         record = self._records.get(record_type, {}).get(record_id)
         return copy.deepcopy(record) if record is not None else None
 
     def list(self, record_type):
-        require_record_type(record_type)
         self._check_up()
         return [copy.deepcopy(record) for record in self._records.get(record_type, {}).values()]
 
     def delete(self, record_type, record_id):
-        require_record_type(record_type)
-        require_str("record_id", record_id)
         self._check_up()
         self._records.get(record_type, {}).pop(record_id, None)
 
