@@ -1,0 +1,38 @@
+body {
+  font-variant-numeric: tabular-nums;
+}
+.mono,
+code,
+.mantine-Code-root {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 12px;
+}
+.page {
+  padding: 20px 24px 80px;
+  max-width: 1600px;
+}
+@media (max-width: 48em) {
+  .page {
+    padding: 16px 16px 80px;
+  }
+}
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.clickable-row {
+  cursor: pointer;
+}
+.clickable-row:hover {
+  background: var(--mantine-color-default-hover);
+}
+.sticky-panel {
+  position: sticky;
+  top: 72px;
+}
+.sort-th {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
