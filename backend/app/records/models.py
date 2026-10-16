@@ -3,9 +3,11 @@ from typing import Generic, Literal, Optional, TypeVar
 from pydantic import BaseModel
 
 STORE_NAMES = ("mongodb", "cassandra", "redis")
+RECORD_TYPES = ("signal", "experiment", "run", "annotation", "dataset")
 
 StoreName = Literal["mongodb", "cassandra", "redis"]
 ServedBy = Literal["mongodb", "cassandra", "redis", "snapshot"]
+RecordType = Literal["signal", "experiment", "run", "annotation", "dataset"]
 
 
 def _in_store_order(names):
