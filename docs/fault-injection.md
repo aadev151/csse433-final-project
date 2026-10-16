@@ -20,3 +20,41 @@ It's pretty messy so another option I will consider when implementing this is fa
 
 ## Packet Loss (bonus)
 `tc qdisc ... netem loss <loss>%` drops the % of outgoing packets randomly
+
+
+# Testing the script
+The repo contains a script `scripts/fault-injection/initial.sh` that can be run on VM-10 to test out the above failure modes. Here is a sample order of the commands to run it:
+
+```
+./initial.sh
+
+sudo nsenter -t $(sudo docker inspect -f '{{.State.Pid}}' cassandra) -n ping -c 3 137.112.104.212
+./initial.sh delay 200ms
+./initial.sh status
+sudo nsenter -t $(sudo docker inspect -f '{{.State.Pid}}' cassandra) -n ping -c 3 137.112.104.212
+./initial.sh clear
+
+./initial.sh loss 30%
+sudo nsenter -t $(sudo docker inspect -f '{{.State.Pid}}' cassandra) -n ping -c 20 137.112.104.212
+./initial.sh clear
+./initial.sh status
+
+./initial.sh skew "+5 seconds"
+date
+./initial.sh unskew
+timedatectl
+
+./initial.sh down
+sudo docker exec cassandra nodetool status
+sudo docker exec cassandra cqlsh -e "CONSISTENCY QUORUM;
+# On VM 11:
+SELECT * FROM market.latest_quote WHERE run_id='demo1' AND symbol='BTCUSDT';"
+sudo docker exec cassandra cqlsh -e "CONSISTENCY ALL; SELECT * FROM market.latest_quote WHERE run_id='demo1' AND symbol='BTCUSDT';"
+# Back to VM 10:
+./initial.sh up
+sudo docker exec cassandra nodetool status
+
+./initial.sh clear
+./initial.sh unskew
+exit
+```
