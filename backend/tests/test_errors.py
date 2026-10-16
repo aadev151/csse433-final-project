@@ -33,8 +33,8 @@ def make_client():
     def validate(body: Body):
         return body
 
-    @app.get("/boom")
-    def boom():
+    @app.get("/unexpected")
+    def unexpected():
         raise RuntimeError("something broke")
 
     return TestClient(app, raise_server_exceptions=False)
@@ -74,6 +74,6 @@ def test_validation_error_uses_contract_format():
 
 
 def test_unexpected_error_is_500_in_contract_format():
-    response = make_client().get("/boom")
+    response = make_client().get("/unexpected")
     assert response.status_code == 500
     assert response.json() == {"reason": "internal", "message": "Unexpected server error"}
