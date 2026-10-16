@@ -1,0 +1,25 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Backend for the NoSQL consistency project"
+authors = [
+    { name = "Brian Rodriguez", email = "rodrigb@rose-hulman.edu" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "cassandra-driver>=3.30.1",
+    "fastapi>=0.143.2",
+    "pymongo>=4.19.0",
+    "redis>=8.1.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.9.1",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
