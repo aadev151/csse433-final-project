@@ -1,5 +1,4 @@
-import json
-import sqlite3
+import copy
 import threading
 import time
 from dataclasses import dataclass
@@ -14,9 +13,21 @@ from app.records.checks import (
     require_store,
     require_str,
 )
+from app.records.json_files import read_json_or_set_aside, write_json_atomic
 from app.records.models import STORE_NAMES
 
 OPS = ("put", "delete")
+ENTRY_KEYS = {
+    "seq",
+    "store",
+    "record_type",
+    "record_id",
+    "op",
+    "record",
+    "attempts",
+    "last_error",
+    "created_at",
+}
 
 
 @dataclass
@@ -32,37 +43,41 @@ class PendingWrite:
     created_at: float
 
 
+def _validate_file(data):
+    if not isinstance(data, dict):
+        raise ValueError("pending writes file root must be an object")
+    require_int("next_seq", data.get("next_seq"), minimum=1)
+    entries = data.get("entries")
+    if not isinstance(entries, list):
+        raise ValueError("entries must be a list")
+    for entry in entries:
+        if not isinstance(entry, dict) or not ENTRY_KEYS <= entry.keys():
+            raise ValueError("every entry must be an object with all entry fields")
+        require_int("seq", entry["seq"], minimum=1)
+        require_store(entry["store"])
+        require_record_type(entry["record_type"])
+        require_str("record_id", entry["record_id"])
+        require_choice("op", entry["op"], OPS)
+
+
 class PendingWrites:
-    """Durable queue of writes that still need to reach a store.
+    """Durable queue of writes that still need to reach a store, kept in a local JSON file.
 
     Keeps only the latest operation per (store, record_type, record_id).
-    Every add gets a new seq, so remove(seq) never deletes a newer entry.
-    Every value is type-checked before it reaches a query.
+    Sequence numbers are never reused, so remove(seq) never deletes a newer entry.
+    Every value is type-checked before it is stored.
     """
 
     def __init__(self, path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(self.path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        with self._lock, self._conn:
-            self._conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS pending_writes (
-                    seq INTEGER PRIMARY KEY AUTOINCREMENT,
-                    store TEXT NOT NULL,
-                    record_type TEXT NOT NULL,
-                    record_id TEXT NOT NULL,
-                    op TEXT NOT NULL,
-                    payload TEXT,
-                    attempts INTEGER NOT NULL DEFAULT 0,
-                    last_error TEXT,
-                    created_at REAL NOT NULL,
-                    UNIQUE (store, record_type, record_id)
-                )
-                """
-            )
+        data = read_json_or_set_aside(self.path, _validate_file)
+        if data is None:
+            data = {"next_seq": 1, "entries": []}
+        highest_seq = max((entry["seq"] for entry in data["entries"]), default=0)
+        data["next_seq"] = max(data["next_seq"], highest_seq + 1)
+        self._data = data
 
     def add(self, store, record_type, record_id, op, record=None):
         require_store(store)
@@ -73,75 +88,90 @@ class PendingWrites:
             if record is None:
                 raise ValueError("put requires a record")
             require_record(record, record_id=record_id)
-            payload = json.dumps(record, allow_nan=False)
-        else:
-            if record is not None:
-                raise ValueError("delete must not include a record")
-            payload = None
-        with self._lock, self._conn:
-            cursor = self._conn.execute(
-                """
-                INSERT OR REPLACE INTO pending_writes
-                    (store, record_type, record_id, op, payload, attempts, last_error, created_at)
-                VALUES (?, ?, ?, ?, ?, 0, NULL, ?)
-                """,
-                (store, record_type, record_id, op, payload, time.time()),
+        elif record is not None:
+            raise ValueError("delete must not include a record")
+
+        with self._lock:
+            key = (store, record_type, record_id)
+            entries = [
+                entry
+                for entry in self._data["entries"]
+                if (entry["store"], entry["record_type"], entry["record_id"]) != key
+            ]
+            seq = self._data["next_seq"]
+            entries.append(
+                {
+                    "seq": seq,
+                    "store": store,
+                    "record_type": record_type,
+                    "record_id": record_id,
+                    "op": op,
+                    "record": copy.deepcopy(record) if op == "put" else None,
+                    "attempts": 0,
+                    "last_error": None,
+                    "created_at": time.time(),
+                }
             )
-            return cursor.lastrowid
+            self._commit({"next_seq": seq + 1, "entries": entries})
+            return seq
 
     def pending(self, store=None, limit=None):
-        query = "SELECT * FROM pending_writes"
-        params = []
         if store is not None:
             require_store(store)
-            query += " WHERE store = ?"
-            params.append(store)
-        query += " ORDER BY seq"
         if limit is not None:
             require_int("limit", limit, minimum=1)
-            query += " LIMIT ?"
-            params.append(limit)
         with self._lock:
-            rows = self._conn.execute(query, params).fetchall()
-        return [self._to_entry(row) for row in rows]
+            entries = sorted(self._data["entries"], key=lambda entry: entry["seq"])
+            if store is not None:
+                entries = [entry for entry in entries if entry["store"] == store]
+            if limit is not None:
+                entries = entries[:limit]
+            return [self._to_entry(entry) for entry in entries]
 
     def remove(self, seq):
         require_int("seq", seq, minimum=1)
-        with self._lock, self._conn:
-            self._conn.execute("DELETE FROM pending_writes WHERE seq = ?", (seq,))
+        with self._lock:
+            entries = [entry for entry in self._data["entries"] if entry["seq"] != seq]
+            if len(entries) != len(self._data["entries"]):
+                self._commit({"next_seq": self._data["next_seq"], "entries": entries})
 
     def mark_failed(self, seq, error):
         require_int("seq", seq, minimum=1)
         require_str("error", error)
-        with self._lock, self._conn:
-            self._conn.execute(
-                "UPDATE pending_writes SET attempts = attempts + 1, last_error = ? WHERE seq = ?",
-                (error, seq),
-            )
+        with self._lock:
+            entries = []
+            found = False
+            for entry in self._data["entries"]:
+                if entry["seq"] == seq:
+                    entry = {**entry, "attempts": entry["attempts"] + 1, "last_error": error}
+                    found = True
+                entries.append(entry)
+            if found:
+                self._commit({"next_seq": self._data["next_seq"], "entries": entries})
 
     def counts(self):
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT store, COUNT(*) AS n FROM pending_writes GROUP BY store"
-            ).fetchall()
-        result = {name: 0 for name in STORE_NAMES}
-        for row in rows:
-            result[row["store"]] = row["n"]
-        return result
+            result = {name: 0 for name in STORE_NAMES}
+            for entry in self._data["entries"]:
+                result[entry["store"]] += 1
+            return result
 
     def close(self):
-        with self._lock:
-            self._conn.close()
+        """Nothing to release; every change is already on disk."""
 
-    def _to_entry(self, row):
+    def _commit(self, new_data):
+        write_json_atomic(self.path, new_data)
+        self._data = new_data
+
+    def _to_entry(self, entry):
         return PendingWrite(
-            seq=row["seq"],
-            store=row["store"],
-            record_type=row["record_type"],
-            record_id=row["record_id"],
-            op=row["op"],
-            record=json.loads(row["payload"]) if row["payload"] is not None else None,
-            attempts=row["attempts"],
-            last_error=row["last_error"],
-            created_at=row["created_at"],
+            seq=entry["seq"],
+            store=entry["store"],
+            record_type=entry["record_type"],
+            record_id=entry["record_id"],
+            op=entry["op"],
+            record=copy.deepcopy(entry["record"]),
+            attempts=entry["attempts"],
+            last_error=entry["last_error"],
+            created_at=entry["created_at"],
         )

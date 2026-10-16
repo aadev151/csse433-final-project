@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from app.records.pending_writes import PendingWrites
@@ -5,7 +7,7 @@ from app.records.pending_writes import PendingWrites
 
 @pytest.fixture
 def pending_writes(tmp_path):
-    queue = PendingWrites(tmp_path / "pending_writes.db")
+    queue = PendingWrites(tmp_path / "pending_writes.json")
     yield queue
     queue.close()
 
@@ -87,14 +89,57 @@ def test_pending_limit(pending_writes):
     assert len(pending_writes.pending(limit=1)) == 1
 
 
+def test_returned_record_is_a_copy(pending_writes):
+    pending_writes.add("cassandra", "signal", "s1", "put", {"id": "s1", "version": 1, "params": {"field": "qty"}})
+    entry = pending_writes.pending()[0]
+    entry.record["params"]["field"] = "changed"
+    assert pending_writes.pending()[0].record["params"]["field"] == "qty"
+
+
+# Durability
+
 def test_survives_reopen(tmp_path):
-    path = tmp_path / "pending_writes.db"
+    path = tmp_path / "pending_writes.json"
     first = PendingWrites(path)
     first.add("cassandra", "signal", "s1", "put", {"id": "s1", "version": 1})
     first.close()
     second = PendingWrites(path)
     assert len(second.pending()) == 1
     second.close()
+
+
+def test_seq_is_never_reused_after_reopen(tmp_path):
+    path = tmp_path / "pending_writes.json"
+    first = PendingWrites(path)
+    old_seq = first.add("cassandra", "signal", "s1", "put", {"id": "s1", "version": 1})
+    first.remove(old_seq)
+    second = PendingWrites(path)
+    new_seq = second.add("cassandra", "signal", "s2", "put", {"id": "s2", "version": 1})
+    assert new_seq > old_seq
+
+
+def test_file_is_valid_json_with_no_leftover_temp_file(tmp_path):
+    path = tmp_path / "pending_writes.json"
+    PendingWrites(path).add("cassandra", "signal", "s1", "put", {"id": "s1", "version": 1})
+    data = json.loads(path.read_text())
+    assert data["entries"][0]["record_id"] == "s1"
+    assert [p.name for p in tmp_path.iterdir()] == ["pending_writes.json"]
+
+
+def test_corrupt_file_is_set_aside(tmp_path):
+    path = tmp_path / "pending_writes.json"
+    path.write_text("not json {")
+    queue = PendingWrites(path)
+    assert queue.pending() == []
+    assert any(p.name.startswith("pending_writes.json.corrupt-") for p in tmp_path.iterdir())
+
+
+def test_wrong_shape_file_is_set_aside(tmp_path):
+    path = tmp_path / "pending_writes.json"
+    path.write_text(json.dumps({"next_seq": 1, "entries": [{"seq": "one"}]}))
+    queue = PendingWrites(path)
+    assert queue.pending() == []
+    assert any(p.name.startswith("pending_writes.json.corrupt-") for p in tmp_path.iterdir())
 
 
 # Parameter checks
@@ -168,7 +213,10 @@ def test_pending_rejects_bad_limit(pending_writes):
         pending_writes.pending(limit="10")
 
 
-def test_failed_check_writes_nothing(pending_writes):
+def test_failed_check_writes_nothing(tmp_path):
+    path = tmp_path / "pending_writes.json"
+    queue = PendingWrites(path)
     with pytest.raises(TypeError):
-        pending_writes.add("redis", "signal", "s1", "put", {"id": "s1", "version": "1"})
-    assert pending_writes.pending() == []
+        queue.add("redis", "signal", "s1", "put", {"id": "s1", "version": "1"})
+    assert queue.pending() == []
+    assert not path.exists()
