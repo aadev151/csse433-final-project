@@ -8,8 +8,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import load_settings
-from app.datasets.importer import DatasetImporter
-from app.datasets.routes import router as datasets_router
 from app.errors import install_error_handlers
 from app.records.models import STORE_NAMES
 from app.records.pending_writes import PendingWrites
@@ -91,18 +89,15 @@ def _close_stores(records):
             log.exception("failed to close %s", store.name)
 
 
-def create_app(records=None, settings=None, importer=None, sync_interval=SYNC_INTERVAL_SECONDS):
+def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS):
     if settings is None:
         settings = load_settings()
     if records is None:
         records = build_records(settings)
-    if importer is None:
-        importer = DatasetImporter(records, settings.data_dir)
 
     @asynccontextmanager
     async def lifespan(app):
         await asyncio.to_thread(ensure_builtin_signals, records)
-        await asyncio.to_thread(importer.recover_interrupted)
         sync_task = None
         if sync_interval:
             sync_task = asyncio.create_task(_sync_forever(records, sync_interval))
@@ -113,12 +108,10 @@ def create_app(records=None, settings=None, importer=None, sync_interval=SYNC_IN
                 sync_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await sync_task
-            importer.shutdown()
             await asyncio.to_thread(_close_stores, records)
 
     app = FastAPI(title="Consistency Under Fire API", lifespan=lifespan)
     app.state.records = records
-    app.state.importer = importer
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.frontend_origins),
@@ -128,5 +121,4 @@ def create_app(records=None, settings=None, importer=None, sync_interval=SYNC_IN
     )
     install_error_handlers(app)
     app.include_router(signals_router)
-    app.include_router(datasets_router)
     return app
