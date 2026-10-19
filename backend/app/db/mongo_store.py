@@ -17,3 +17,15 @@ class MongoDB(RecordStore):
             socketTimeoutMS=timeout_ms,
         )
         self._db = self._client[database_name]
+
+    def put(self, record_type, record):
+        require_record_type(record_type)
+        require_record(record)
+        record_id = record["id"]
+        document = {**record, "_id": record_id}
+        collection = self._db[record_type]
+        filter_by_id = {"_id": record_id}
+        try:
+            collection.replace_one(filter_by_id, document, upsert=True)
+        except PyMongoError as error:
+            raise StoreUnavailable(self.name, str(error)) from error
