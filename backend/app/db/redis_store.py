@@ -61,3 +61,21 @@ class RedisStore(RecordStore):
             return None
         record = json.loads(body)
         return record
+
+    def list(self, record_type):
+        require_record_type(record_type)
+        index_key = self._index_key(record_type)
+        try:
+            all_set_members = self._client.smembers(index_key)
+            all_ids = sorted(all_set_members)
+            if not all_ids:
+                return []
+            pipe = self._client.pipeline(transaction = False)
+            for record_id in all_ids:
+                record_key = self._record_key(record_type, record_id)
+                pipe.hget(record_key, "body")
+            bodies = pipe.execute()
+        except UNAVAILABLE_ERRORS as error:
+            raise StoreUnavailable(self.name, str(error)) from error
+        records = [json.loads(body) for body in bodies if body is not None]
+        return records
