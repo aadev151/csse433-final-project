@@ -49,4 +49,15 @@ class RedisStore(RecordStore):
         except UNAVAILABLE_ERRORS as error:
             raise StoreUnavailable(self.name, str(error)) from error
 
-    
+    def get(self, record_type, record_id):
+        require_record_type(record_type)
+        require_str("record_id", record_id)
+        record_key = self._record_key(record_type, record_id)
+        try:
+            body = self._client.hget(record_key, "body")
+        except UNAVAILABLE_ERRORS as error:
+            raise StoreUnavailable(self.name, str(error)) from error
+        if body is None:
+            return None
+        record = json.loads(body)
+        return record
