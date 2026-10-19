@@ -29,3 +29,14 @@ class MongoDB(RecordStore):
             collection.replace_one(filter_by_id, document, upsert=True)
         except PyMongoError as error:
             raise StoreUnavailable(self.name, str(error)) from error
+
+    def get(self, record_type, record_id):
+        require_record_type(record_type)
+        require_str("record_id", record_id)
+        collection = self._db[record_type]
+        filter_by_id = {"_id": record_id}
+        exclude_internal_id = {"_id": False}
+        try:
+            return collection.find_one(filter_by_id, exclude_internal_id)
+        except PyMongoError as error:
+            raise StoreUnavailable(self.name, str(error)) from error
