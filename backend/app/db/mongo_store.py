@@ -40,3 +40,16 @@ class MongoDB(RecordStore):
             return collection.find_one(filter_by_id, exclude_internal_id)
         except PyMongoError as error:
             raise StoreUnavailable(self.name, str(error)) from error
+
+    def list(self, record_type):
+        require_record_type(record_type)
+        collection = self._db[record_type]
+        no_filter = {}
+        excluded_internal_id = {"_id": False}
+        try:
+            all_documents = collection.find(no_filter, excluded_internal_id)
+            return list(all_documents)
+        except PyMongoError as error:
+            raise StoreUnavailable(self.name, str(error)) from error
+
+    
