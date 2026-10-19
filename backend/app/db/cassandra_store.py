@@ -91,3 +91,12 @@ class CassandraStore(RecordStore):
             return result
         except UNAVAILABLE_ERRORS as error:
             raise StoreUnavailable(self.name, str(error)) from error
+
+    def put(self, record_type, record):
+        require_record_type(record_type)
+        require_record(record)
+        record_id = record["id"]
+        version = record["version"]
+        body = json.dumps(record, allow_nan = False)
+        params = (record_type, record_id, version, body)
+        self._execute("put", params)
