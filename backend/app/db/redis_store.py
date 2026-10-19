@@ -23,3 +23,11 @@ class RedisStore(RecordStore):
             socket_connect_timeout=timeout_seconds,
         )
         self._client = client
+
+    def _record_key(self, record_type, record_id):
+        key = f'app:{record_type}:{record_id}'
+        return key
+
+    def _index_key(self, recrod_type):
+        key = f'app:index:{recrod_type}'
+        return key
