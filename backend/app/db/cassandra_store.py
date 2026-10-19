@@ -122,3 +122,24 @@ class CassandraStore(RecordStore):
         except UNAVAILABLE_ERRORS as error:
             raise StoreUnavailable(self.name, str(error)) from error
 
+    def delete(self, record_type, record_id):
+        require_record_type(record_type)
+        require_str("record_id", record_id)
+        params = (record_type, record_id)
+        self._execute("delete", params)
+
+    #needed for the /api/health endpoint
+    #in api-contract.md in docs folder
+    def ping(self):
+        start = time.perf_counter()
+        self._execute("ping", ())
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        return elapsed_ms
+
+    def close(self):
+        with self._lock:
+            if self._cluster is not None:
+                self._cluster.shutdown()
+            self._cluster = None
+            self._session = None
+            self._statements = None
