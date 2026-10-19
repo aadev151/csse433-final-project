@@ -3,10 +3,8 @@ import contextlib
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from app.config import load_settings
 from app.errors import install_error_handlers
 from app.records.models import STORE_NAMES
@@ -16,6 +14,9 @@ from app.records.snapshot import SnapshotStore
 from app.records.stores import InMemoryStore
 from app.signals.builtins import ensure_builtin_signals
 from app.signals.routes import router as signals_router
+from app.db.cassandra_store import CassandraStore
+from app.db.mongo_store import MongoStore
+from app.db.redis_store import RedisStore
 
 log = logging.getLogger(__name__)
 
@@ -26,35 +27,29 @@ def build_stores(settings):
     if settings.store_mode == "memory":
         return [InMemoryStore(name) for name in STORE_NAMES]
 
-    from app.db.cassandra_store import CassandraStore
-    from app.db.mongo_store import MongoStore
-    from app.db.redis_store import RedisStore
-
     timeout = settings.store_timeout_seconds
-    mongo = MongoStore.connect(
-        settings.mongo_uri,
+    timeout_ms = int(timeout * 1000)
+
+    mongo = MongoStore(
+        uri=settings.mongo_uri,
         database_name=settings.mongo_db,
-        timeout_ms=int(timeout * 1000),
+        timeout_ms=timeout_ms,
     )
+
     cassandra = CassandraStore(
         hosts=settings.cassandra_hosts,
         port=settings.cassandra_port,
         keyspace=settings.cassandra_keyspace,
         local_dc=settings.cassandra_local_dc,
         consistency=settings.cassandra_consistency,
-        username=settings.cassandra_username,
-        password=settings.cassandra_password,
         timeout_seconds=timeout,
     )
-    if settings.redis_sentinels:
-        redis_store = RedisStore.from_sentinels(
-            settings.redis_sentinels,
-            settings.redis_master_name,
-            password=settings.redis_password,
-            timeout_seconds=timeout,
-        )
-    else:
-        redis_store = RedisStore.from_url(settings.redis_url, timeout_seconds=timeout)
+
+    redis_store = RedisStore(
+        url=settings.redis_url,
+        timeout_seconds=timeout,
+    )
+
     return [mongo, cassandra, redis_store]
 
 
