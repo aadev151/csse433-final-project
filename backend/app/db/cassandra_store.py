@@ -82,3 +82,12 @@ class CassandraStore(RecordStore):
         ping_statement.consistency_level = ConsistencyLevel.ONE
         statements["ping"] = ping_statement
         return statements
+
+    def _execute(self, query_name, params):
+        session, statements = self._connect()
+        statement = statements[query_name]
+        try:
+            result = session.execute(statement, params)
+            return result
+        except UNAVAILABLE_ERRORS as error:
+            raise StoreUnavailable(self.name, str(error)) from error
