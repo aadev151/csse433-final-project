@@ -38,3 +38,47 @@ class CassandraStore(RecordStore):
         self._cluster = None
         self._session = None
         self._statements = None
+
+    def _connect(self):
+        with self._lock:
+            if self._session is not None:
+                return self._session, self._statements
+
+            dc_policy = DCAwareRoundRobinPolicy(local_dc=self._local_dc)
+            token_policy = TokenAwarePolicy(dc_policy)
+            profile = ExecutionProfile(
+                load_balancing_policy=token_policy,
+                consistency_level=self._consistency,
+                request_timeout=self._timeout,
+            )
+            profiles = {EXEC_PROFILE_DEFAULT: profile}
+            cluster = Cluster(
+                contact_points=self._hosts,
+                port=self._port,
+                connect_timeout=self._timeout,
+                execution_profiles=profiles,
+            )
+            try:
+                session = cluster.connect(self._keyspace)
+                statements = self._prepare(session)
+            except UNAVAILABLE_ERRORS as error:
+                cluster.shutdown()
+                raise StoreUnavailable(self.name, str(error)) from error
+            except Exception:
+                cluster.shutdown()
+                raise
+
+            self._cluster = cluster
+            self._session = session
+            self._statements = statements
+            return session, statements
+
+    def _prepare(self, session):
+        statements = {}
+        for query_name, query_text in QUERIES.items():
+            prepared = session.prepare(query_text)
+            statements[query_name] = prepared
+        ping_statement = session.prepare(PING_QUERY)
+        ping_statement.consistency_level = ConsistencyLevel.ONE
+        statements["ping"] = ping_statement
+        return statements
