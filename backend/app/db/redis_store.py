@@ -79,3 +79,19 @@ class RedisStore(RecordStore):
             raise StoreUnavailable(self.name, str(error)) from error
         records = [json.loads(body) for body in bodies if body is not None]
         return records
+
+    def delete(self, record_type, record_id):
+        require_record_type(record_type)
+        require_str("record_id", record_id)
+        record_key = self._record_key(record_type, record_id)
+        index_key = self._index_key(record_type)
+        try:
+            pipe = self._client.pipeline(transaction = True)
+            pipe.delete(record_key)
+            pipe.srem(index_key, record_id)
+            pipe.execute()
+        except UNAVAILABLE_ERRORS as error:
+            raise StoreUnavailable(self.name, str(error)) from error
+
+    def close(self):
+        self._client.close()
