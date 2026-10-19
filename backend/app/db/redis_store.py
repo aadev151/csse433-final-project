@@ -28,6 +28,25 @@ class RedisStore(RecordStore):
         key = f'app:{record_type}:{record_id}'
         return key
 
-    def _index_key(self, recrod_type):
-        key = f'app:index:{recrod_type}'
+    def _index_key(self, record_type):
+        key = f'app:index:{record_type}'
         return key
+
+    def put(self, record_type, record):
+        require_record_type(record_type)
+        require_record(record)
+        record_id = record["id"]
+        version = record["version"]
+        body = json.dumps(record, allow_nan = False)
+        record_key = self._record_key(record_type, record_id)
+        index_key = self._index_key(record_type)
+        hash_fields = {"version": str(version), "body": body}
+        try:
+            pipe = self._client.pipeline(transaction = True)
+            pipe.hset(record_key, mapping = hash_fields)
+            pipe.sadd(index_key, record_id)
+            pipe.execute()
+        except UNAVAILABLE_ERRORS as error:
+            raise StoreUnavailable(self.name, str(error)) from error
+
+    
