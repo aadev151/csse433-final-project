@@ -100,3 +100,14 @@ class CassandraStore(RecordStore):
         body = json.dumps(record, allow_nan = False)
         params = (record_type, record_id, version, body)
         self._execute("put", params)
+
+    def get(self, record_type, record_id):
+        require_record_type(record_type)
+        require_str("record_id", record_id)
+        params = (record_type, record_id)
+        result = self._execute("get", params)
+        row = result.one()
+        if row is None:
+            return None
+        record = json.loads(row.body)
+        return record
