@@ -1,11 +1,9 @@
 import json
 import threading
 import time
-
 from cassandra import ConsistencyLevel, DriverException, RequestExecutionException
 from cassandra.cluster import EXEC_PROFILE_DEFAULT, Cluster, ExecutionProfile, NoHostAvailable
 from cassandra.policies import DCAwareRoundRobinPolicy, TokenAwarePolicy
-
 from app.records.checks import require_record, require_record_type, require_str
 from app.records.stores import RecordStore, StoreUnavailable
 
