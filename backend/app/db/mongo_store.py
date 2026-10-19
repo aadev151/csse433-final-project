@@ -3,7 +3,7 @@ from pymongo.errors import PyMongoError
 from app.records.checks import require_record, require_record_type, require_str
 from app.records.stores import RecordStore, StoreUnavailable
 
-class MongoDB(RecordStore):
+class MongoStore(RecordStore):
 
     name = "mongodb"
 
@@ -55,7 +55,7 @@ class MongoDB(RecordStore):
     def delete(self, record_type, record_id):
         require_record_type(record_type)
         require_str("record_id", record_id)
-        collection = self._db[record_id]
+        collection = self._db[record_type]
         filter_by_id = {"_id": record_id}
         try:
             collection.delete_one(filter_by_id)
