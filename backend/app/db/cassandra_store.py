@@ -111,3 +111,14 @@ class CassandraStore(RecordStore):
             return None
         record = json.loads(row.body)
         return record
+
+    def list(self, record_type):
+        require_record_type(record_type)
+        params = (record_type, )
+        result = self._execute("list", params)
+        try:
+            records = [json.loads(row.body) for row in result]
+            return records
+        except UNAVAILABLE_ERRORS as error:
+            raise StoreUnavailable(self.name, str(error)) from error
+
