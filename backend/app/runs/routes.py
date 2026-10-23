@@ -92,8 +92,8 @@ def delete_run(run_id: str, request: Request):
         raise not_found("run", run_id)
     return WriteResponse[None](record=None, write=write)
 
-@router.post("/{run_id}/cancel",response_model = WriteResponse[Run])
-def cancel_run(run_id:str, request: Request):
+# @router.post("/{run_id}/cancel",response_model = WriteResponse[Run])
+# def cancel_run(run_id:str, request: Request):
     
 
 @router.get("/{run_id}/export.csv")
