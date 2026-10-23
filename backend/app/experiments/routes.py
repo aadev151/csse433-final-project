@@ -76,3 +76,30 @@ def create_experiment(body: ExperimentInput, request: Request):
     record, write = records.create(RECORD_TYPE, fields)
     experiment = to_experiment(record)
     return WriteResponse[Experiment](record = experiment, write = write)
+
+@router.put("/{experiment_id}", response_model = WriteResponse[Experiment])
+def update_experiment(experiment_id: str, body: ExperimentInput, request: Request):
+    records = _records(request)
+    current = _get_or_404(records, experiment_id)
+    current_status = current.get("status")
+    if current_status == "running":
+        raise conflict("already_running", "Cannot edit an experiment while it is running")
+    _validate_signal_ids(records, body.signal_ids)
+    fields = _fields_from_input(body)
+    try:
+        record, write = records.update(
+            RECORD_TYPE,
+            experiment_id,
+            fields,
+            expected_version = body.version,
+        )
+    except RecordNotFound:
+        raise not_found("experiment", experiment_id)
+    except VersionConflict as error:
+        raise conflict(
+            "version_conflict",
+            f"This experiment was changed by someone else (now at version {error.current_version}). "
+            "Reload it and try again",
+        )
+    experiment = to_experiment(record)
+    return WriteResponse[Experiment](record=experiment, write=write)
