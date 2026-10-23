@@ -14,6 +14,7 @@ from app.records.snapshot import SnapshotStore
 from app.records.stores import InMemoryStore
 from app.signals.builtins import ensure_builtin_signals
 from app.signals.routes import router as signals_router
+from app.annotations.routes import router as annotations_router
 from app.db.cassandra_store import CassandraStore
 from app.db.mongo_store import MongoStore
 from app.db.redis_store import RedisStore
@@ -117,5 +118,6 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
     )
     install_error_handlers(app)
     app.include_router(signals_router)
+    app.include_router(annotations_router)
     app.include_router(experiments_router)
     return app

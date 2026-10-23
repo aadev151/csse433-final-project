@@ -26,4 +26,8 @@ class AnnotationInput(BaseModel):
 class AnnotationUpdate(BaseModel):
     text: str
     tags: list[str]
-    version: int
+    version: Optional[int] = None
+
+
+def to_annotation(record):
+    return Annotation(**{field: record[field] for field in Annotation.model_fields})
