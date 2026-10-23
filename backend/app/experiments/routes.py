@@ -57,3 +57,11 @@ def list_experiments(
         experiments = [exp for exp in experiments if q_lower in exp.name.lower()]
     sorted_experiments = sorted(experiments, key = lambda exp: exp.name.lower())
     return sorted_experiments
+
+@router.get("/{experiment_id}", response_model = Experiment)
+def get_experiment(experiment_id: str, request: Request, response: Response):
+    record, served_by = _records(request).get(RECORD_TYPE, experiment_id)
+    response.headers["X-Served-By"] = served_by
+    if record is None:
+        raise not_found("experiment", experiment_id)
+    return to_experiment(record)
