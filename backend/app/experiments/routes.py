@@ -198,3 +198,12 @@ def launch_experiment(experiment_id: str, request: Request):
     write = WriteInfo.from_results(["mongodb", "cassandra", "redis"], [])
     launch_result = LaunchResponse(run_ids = run_ids, write = write)
     return launch_result
+
+@router.get("/{experiment_id}/runs")
+def list_experiment_runs(experiment_id: str, request: Request, response: Response):
+    records = _records(request)
+    _get_or_404(records, experiment_id)
+    all_runs, served_by = records.list("run")
+    response.headers["X-Served-By"] = served_by
+    matching_runs = [run for run in all_runs if run.get("experiment_id") == experiment_id]
+    return matching_runs

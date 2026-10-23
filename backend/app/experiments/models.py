@@ -9,7 +9,8 @@ from pydantic import (
     Field,
     StrictInt,
     StrictStr,
-    field_validator
+    field_validator,
+    model_validator,
 )
 
 CONSISTENCY_TYPE = Literal["ONE", "QUORUM", "ALL"]
@@ -48,7 +49,7 @@ class DateRange(BaseModel):
             raise ValueError(f"is not a real date: {error}") from error
         return value
 
-     @field_validator(mode = "after")
+     @model_validator(mode = "after")
      def end_not_before_start(self):
          start = date.fromisoformat(self.start)
          end = date.fromisoformat(self.end)
