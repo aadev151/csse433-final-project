@@ -65,3 +65,14 @@ def get_experiment(experiment_id: str, request: Request, response: Response):
     if record is None:
         raise not_found("experiment", experiment_id)
     return to_experiment(record)
+
+@router.post("", response_model = WriteResponse[Experiment])
+def create_experiment(body: ExperimentInput, request: Request):
+    records = _records(request)
+    _validate_signal_ids(records, body.signal_ids)
+    fields = _fields_from_input(body)
+    fields["status"] = "draft"
+    fields["run_count"] = 0
+    record, write = records.create(RECORD_TYPE, fields)
+    experiment = to_experiment(record)
+    return WriteResponse[Experiment](record = experiment, write = write)
