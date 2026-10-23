@@ -102,4 +102,31 @@ def update_experiment(experiment_id: str, body: ExperimentInput, request: Reques
             "Reload it and try again",
         )
     experiment = to_experiment(record)
-    return WriteResponse[Experiment](record=experiment, write=write)
+    return WriteResponse[Experiment](record = experiment, write = write)
+
+@router.delete("/{experiment_id}", response_model = WriteResponse[None])
+def delete_experiment(experiment_id: str, request: Request):
+    records = _records(request)
+    _get_or_404(records, experiment_id)
+    all_runs, _ = records.list("run")
+    for run in all_runs:
+        run_experiment_id = run.get("experiment_id")
+        if run_experiment_id == experiment_id:
+            try:
+                records.delete("run", run["id"])
+            except:
+                pass
+    all_annotations, _ = records.list("annotation")
+    for annotation in all_annotations:
+        target_type = annotation.get("target_type")
+        target_id = annotation.get("target_id")
+        if target_type == "experiment" and target_id == experiment_id:
+            try:
+                records.delete("annotation", annotation["id"])
+            except:
+                pass
+    try:
+        write = records.delete(RECORD_TYPE, experiment_id)
+    except RecordNotFound:
+        raise not_found("experiment", experiment_id)
+    return WriteResponse[None](record = None, write = write)
