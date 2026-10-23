@@ -151,3 +151,50 @@ def clone_experiment(experiment_id: str, request: Request):
     record, write = records.create(RECORD_TYPE, fields)
     experiment = to_experiment(record)
     return WriteResponse[Experiment](record = experiment, write = write)
+
+@router.post("/{experiment_id}/launch", response_model = LaunchResponse)
+def launch_experiment(experiment_id: str, request: Request):
+    records = _records(request)
+    current = _get_or_404(records, experiment_id)
+    current_status = current.get("status")
+    if current_status in ("queued", "running"):
+        raise conflict("already_running", "This experiment is already queued or running")
+    params = current["params"]
+    consistency_levels = params["consistency"]
+    delays = params["delay_ms"]
+    losses = params["packet_loss_pct"]
+    skews = params["clock_skew_ms"]
+    outages = params["node_outage"]
+    run_ids = []
+    for consistency_level in consistency_levels:
+        for delay in delays:
+            for loss in losses:
+                for skew in skews:
+                    for outage in outages:
+                        run_config = {
+                            "consistency": consistency_level,
+                            "delay_ms": delay,
+                            "packet_loss_pct": loss,
+                            "clock_skew_ms": skew,
+                            "node_outage": outage,
+                        }
+                        run_fields = {
+                            "experiment_id": experiment_id,
+                            "config": run_config,
+                            "status": "queued",
+                            "queue_position": None,
+                            "progress": {"pct": 0, "replayed_until": None},
+                            "started_at": None,
+                            "finished_at": None,
+                            "error": None,
+                            "report": None,
+                        }
+                        run_record, _ = records.create("run", run_fields)
+                        run_id = run_record["id"]
+                        run_ids.append(run_id)
+    old_run_count = current.get("run_count", 0)
+    new_run_count = old_run_count + len(run_ids)
+    records.update(RECORD_TYPE, experiment_id, {"status": "queued", "run_count": new_run_count})
+    write = WriteInfo.from_results(["mongodb", "cassandra", "redis"], [])
+    launch_result = LaunchResponse(run_ids = run_ids, write = write)
+    return launch_result
