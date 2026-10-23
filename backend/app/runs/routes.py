@@ -82,14 +82,19 @@ def update_run(run_id: str, body: RunInput, request: Request):
     run = to_run(record)
     return WriteResponse[Run](record = run, write = write)
 
-# @router.delete("/{run_id}", response_model = WriteResponse[None])
-# def delete_run(run_id: str, request: Request):
-#     records = _records(request)
-#     _get_or_404(records, run_id)
+@router.delete("/{run_id}", response_model = WriteResponse[None])
+def delete_run(run_id: str, request: Request):
+    records = _records(request)
+    _get_or_404(records, run_id)
+    try:
+        write = records.delete(RECORD_TYPE, run_id)
+    except RecordNotFound:
+        raise not_found("run", run_id)
+    return WriteResponse[None](record=None, write=write)
 
 @router.post("/{run_id}/cancel",response_model = WriteResponse[Run])
 def cancel_run(run_id:str, request: Request):
-    ...
+    
 
 @router.get("/{run_id}/export.csv")
 def export_experiment(run_id: str, request: Request):
