@@ -35,3 +35,25 @@ def _validate_signal_ids(records, signal_ids):
             missing.append(signal_id)
     if missing:
         raise validation_error(f"These signal IDs do not exist: {', '.join(missing)}")
+
+@router.get("", response_model=list[Experiment])
+def list_experiments(
+    request: Request,
+    response: Response,
+    status: str = Query(default = None),
+    tag: str = Query(default = None),
+    q: str = Query(default = None),
+):
+    all_records, served_by = _records(request).list(RECORD_TYPE)
+    response.headers["X-Served-By"] = served_by
+    experiments = [to_experiment(record) for record in all_records]
+    if status is not None:
+        experiments = [exp for exp in experiments if exp.status == status]
+    if tag is not None:
+        tag_lower = tag.lower()
+        experiments = [exp for exp in experiments if any(t.lower() == tag_lower for t in exp.tags)]
+    if q is not None:
+        q_lower = q.lower()
+        experiments = [exp for exp in experiments if q_lower in exp.name.lower()]
+    sorted_experiments = sorted(experiments, key = lambda exp: exp.name.lower())
+    return sorted_experiments
