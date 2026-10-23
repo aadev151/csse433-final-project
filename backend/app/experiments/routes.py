@@ -130,3 +130,24 @@ def delete_experiment(experiment_id: str, request: Request):
     except RecordNotFound:
         raise not_found("experiment", experiment_id)
     return WriteResponse[None](record = None, write = write)
+
+@router.post("/{experiment_id}/clone", response_model = WriteResponse[Experiment])
+def clone_experiment(experiment_id: str, request: Request):
+    records = _records(request)
+    current = _get_or_404(records, experiment_id)
+    clone_name = f"{current["name"]} (copy)"
+    fields = {
+        "name": clone_name,
+        "symbols": current["symbols"],
+        "dates": current["dates"],
+        "signal_ids": current["signal_ids"],
+        "params": current["params"],
+        "replay_speed": current["replay_speed"],
+        "tags": current["tags"],
+        "notes": current["notes"],
+        "status": "draft",
+        "run_count": 0,
+    }
+    record, write = records.create(RECORD_TYPE, fields)
+    experiment = to_experiment(record)
+    return WriteResponse[Experiment](record = experiment, write = write)
