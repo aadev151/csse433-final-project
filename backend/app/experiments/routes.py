@@ -207,3 +207,8 @@ def list_experiment_runs(experiment_id: str, request: Request, response: Respons
     response.headers["X-Served-By"] = served_by
     matching_runs = [run for run in all_runs if run.get("experiment_id") == experiment_id]
     return matching_runs
+
+@router.get("/{experiment_id}/export.csv")
+def export_experiment(experiment_id: str, request: Request):
+    _get_or_404(_records(request), experiment_id)
+    raise not_found("export", "Run results are not available yet")
