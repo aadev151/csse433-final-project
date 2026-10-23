@@ -1,9 +1,7 @@
+import re
 from typing import Literal, Optional
-from pydantic import (
-    BaseModel,
-    Field,
-    StrictInt,
-)
+from app.records.replicated import WriteInfo
+from pydantic import BaseModel, Field, StrictInt, ConfigDict
 
 from app.records.models import WriteInfo
 
@@ -33,6 +31,19 @@ class SignalReport(BaseModel):
 class Progress(BaseModel):
     pct: float
     replayed_until: Optional[str] = None
+
+class RunInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    experiment_id: str
+    config: RunConfig
+    queue_position: Optional[int] = None
+    progress: Progress
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    error: Optional[str] = None
+    report: Optional[dict[str, SignalReport]] = None
+    version: int
 
 class Run(BaseModel):
     id: str
@@ -68,3 +79,7 @@ class QueueState(BaseModel):
     running: Optional[Run] = None
     waiting: list[Run]
     blocked_reason: Optional[CASSANDRA_DOWN] = None
+
+
+def to_run(record):
+    return Run(**{field: record[field] for field in Run.model_fields})
