@@ -18,6 +18,7 @@ from app.annotations.routes import router as annotations_router
 from app.db.cassandra_store import CassandraStore
 from app.db.mongo_store import MongoStore
 from app.db.redis_store import RedisStore
+from app.experiments.routes import router as experiments_router
 
 log = logging.getLogger(__name__)
 
@@ -118,4 +119,5 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
     install_error_handlers(app)
     app.include_router(signals_router)
     app.include_router(annotations_router)
+    app.include_router(experiments_router)
     return app

@@ -1,16 +1,11 @@
-import math
 from typing import Literal, Optional
-from app.records.replicated import WriteInfo
-
 from pydantic import (
     BaseModel,
-    ConfigDict,
-    StrictStr,
     Field,
     StrictInt,
 )
 
-MAX_DELAY_MS = 24 * 60 * 60 * 1000
+from app.records.models import WriteInfo
 
 CONSISTENCY_TYPE = Literal["ONE", "QUORUM", "ALL"]
 NODE_OUTAGE = Literal["none", "one_node_down"]
@@ -20,23 +15,23 @@ CASSANDRA_DOWN = Literal["cassandra_down"]
 
 class RunConfig(BaseModel):
     consistency: CONSISTENCY_TYPE
-    delay_ms: StrictInt = Field(ge=0, le=MAX_DELAY_MS)
-    packet_loss_pct: StrictInt = Field(ge=0, le=MAX_DELAY_MS)
-    clock_skew_ms: StrictInt = Field(ge=0, le=MAX_DELAY_MS)
+    delay_ms: StrictInt = Field(ge=0)
+    packet_loss_pct: StrictInt = Field(ge=0, le=100)
+    clock_skew_ms: StrictInt
     node_outage: NODE_OUTAGE
 
 class SignalReport(BaseModel):
-    avg_error: int
-    max_error: int
-    wrong_call_rate: int
-    staleness_p50_ms: int
-    staleness_p99_ms: int
-    latency_p50_ms: int
-    latency_p99_ms: int
+    avg_error: float
+    max_error: float
+    wrong_call_rate: float
+    staleness_p50_ms: float
+    staleness_p99_ms: float
+    latency_p50_ms: float
+    latency_p99_ms: float
     readings_count: int
 
 class Progress(BaseModel):
-    pct: int
+    pct: float
     replayed_until: Optional[str] = None
 
 class Run(BaseModel):
@@ -49,25 +44,25 @@ class Run(BaseModel):
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
     error: Optional[str] = None
-    report: dict[StrictStr, SignalReport] = Field(default_factory=dict)
+    report: Optional[dict[str, SignalReport]] = None
     version: int
 
 class ReadingPoint(BaseModel):
     t: str
-    value: int
-    truth: int
-    staleness_ms: int
-    latency_ms: int
+    value: float
+    truth: float
+    staleness_ms: float
+    latency_ms: float
 
 class ReadingsResponse(BaseModel):
     points: list[ReadingPoint]
 
 class FaultWindow(BaseModel):
-    start:str
+    start: str
     end: str
     kind: KIND
     target: str
-    value: Optional[int] = None
+    value: Optional[float] = None
 
 class QueueState(BaseModel):
     running: Optional[Run] = None
