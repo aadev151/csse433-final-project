@@ -173,6 +173,20 @@ export interface SignalReport {
   readings_count: number;
 }
 
+export interface RunInput {
+  experiment_id: string,
+  config: RunConfig,
+  queue_position: number | null,
+  progress: { pct: number; replayed_until: ISODateTime | null };
+  error: string | null,
+  report: Record<string, SignalReport> | null; // keyed by signal_id
+  version: number;
+}
+
+export interface RunCancel {
+  status: RunStatus
+}
+
 export interface Run {
   id: string;
   experiment_id: string;

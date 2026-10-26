@@ -39,11 +39,12 @@ class RunInput(BaseModel):
     config: RunConfig
     queue_position: Optional[int] = None
     progress: Progress
-    started_at: Optional[str] = None
-    finished_at: Optional[str] = None
     error: Optional[str] = None
     report: Optional[dict[str, SignalReport]] = None
     version: int
+
+class RunCancel(BaseModel):
+    status: STATUS
 
 class Run(BaseModel):
     id: str
