@@ -44,6 +44,17 @@ def get_run(run_id: str, request: Request, response: Response):
             raise not_found("run", run_id)
     return to_run(record)
 
+@router.get("", response_mode=list[Run])
+def list_runs(status: STATUS, request: Request, response: Response):
+    records, served_by = _records(request).list(RECORD_TYPE)
+    response.headers["X-Served-By"] = served_by
+    runs = [
+        to_run(record)
+        for record in records
+        if record["status"] == status
+    ]
+    return sorted(runs, key=lambda run: run.started_at, reverse=True)
+
 @router.patch("/{run_id}/cancel", response_model=Run)
 def cance_run(run_id: str, body: RunInput, request: Request):
      records = _records(request)
