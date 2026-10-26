@@ -42,11 +42,13 @@ def get_run(run_id: str, request: Request, response: Response):
     response.headers["X-Served-By"] = served_by
     if record is None:
             raise not_found("run", run_id)
+    return to_run(record)
 
 @router.patch("/{run_id}/cancel", response_model=Run)
-def cance_run(run_id: str, body: RunCancel, request: Request):
+def cance_run(run_id: str, body: RunInput, request: Request):
      records = _records(request)
      fields = _fields_from_input(body)
+     fields['status'] = "cancelled"
      record, write = records.update(RECORD_TYPE, run_id, fields)
      run = to_run(record)
      return WriteResponse[Run](record = run, write = write)
