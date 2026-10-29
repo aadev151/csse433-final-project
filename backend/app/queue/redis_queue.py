@@ -23,3 +23,11 @@ class RunQueue:
             return run_id
         except UNAVAILABLE_ERRORS:
             return None
+        
+    def peek(self):
+        try:
+            all_ids = self._client.lrange(QUEUE_KEY, 0, -1)
+            return all_ids
+        except UNAVAILABLE_ERRORS:
+            return []
+        
