@@ -36,4 +36,11 @@ class RunQueue:
             self._client.lrem(QUEUE_KEY, 0, run_id)
         except UNAVAILABLE_ERRORS:
             pass
+
+    def length(self):
+        try:
+            count = self._client.llen(QUEUE_KEY)
+            return count
+        except UNAVAILABLE_ERRORS:
+            return 0
         
