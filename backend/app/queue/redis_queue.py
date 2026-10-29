@@ -8,11 +8,18 @@ QUEUE_KEY = "app:run_queue"
 class RunQueue:
 
     def __init__(self, redis_client):
-        self.client = redis_client
+        self._client = redis_client
 
     def push(self, run_ids):
         if not run_ids: return
         try:
-            self.client.rpush(QUEUE_KEY, run_ids)
+            self._client.rpush(QUEUE_KEY, run_ids)
         except UNAVAILABLE_ERRORS:
             pass
+
+    def pop(self):
+        try:
+            run_id = self._client.lpop(QUEUE_KEY)
+            return run_id
+        except UNAVAILABLE_ERRORS:
+            return None
