@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 
@@ -5,6 +6,8 @@ from app.records.replicated import RecordNotFound
 
 log = logging.getLogger(__name__)
 
+POLL_INTERVAL = 2.0
+CASSANDRA_RETRY_INTERVAL = 5.0
 PROGRESS_STEPS = 10
 PROGRESS_STEP_DELAY = 0.5
 
@@ -85,3 +88,16 @@ class RunWorker:
 
         self._execute_run(run_id)
         return True
+
+    async def run_forever(self):
+        log.info("run worker started")
+        while True:
+            run_id = await asyncio.to_thread(self._queue.pop)
+            if run_id is None:
+                await asyncio.sleep(POLL_INTERVAL)
+                continue
+
+            log.info("picked up run %s from queue", run_id)
+            success = await asyncio.to_thread(self._process_one, run_id)
+            if not success:
+                await asyncio.sleep(CASSANDRA_RETRY_INTERVAL)
