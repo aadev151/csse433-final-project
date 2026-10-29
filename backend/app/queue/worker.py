@@ -61,3 +61,27 @@ class RunWorker:
         }
         self._update_run(run_id, done_fields)
         log.info("run %s finished", run_id)
+
+    def _process_one(self, run_id):
+        record, _ = self._records.get("run", run_id)
+        if record is None:
+            log.warning("run %s not found, skipping", run_id)
+            return True
+
+        status = record.get("status")
+        if status in ("done", "failed", "cancelled"):
+            log.info("run %s already %s, skipping", run_id, status)
+
+        if not self._is_cassandra_up():
+            log.warning("cassandra is down, holding run %s", run_id)
+            waiting_fields = {"status": "waiting_for_cassandra"}
+            self._update_run(run_id, waiting_fields)
+            self._queue.push([run_id])
+            return False
+
+        if status == "waiting_for_cassandra":
+            queued_fields = {"status": "queued"}
+            self._update_run(run_id, queued_fields)
+
+        self._execute_run(run_id)
+        return True
