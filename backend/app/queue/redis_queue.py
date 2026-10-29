@@ -30,4 +30,10 @@ class RunQueue:
             return all_ids
         except UNAVAILABLE_ERRORS:
             return []
+
+    def remove(self, run_id):
+        try:
+            self._client.lrem(QUEUE_KEY, 0, run_id)
+        except UNAVAILABLE_ERRORS:
+            pass
         
