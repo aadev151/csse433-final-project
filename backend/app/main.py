@@ -24,6 +24,7 @@ from app.runs.routes import router as runs_router
 from app.queue.redis_queue import RunQueue
 from app.queue.worker import RunWorker
 from app.faults.injector import FaultInjector
+from app.datasets.routes import router as datasets_router
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:  %(name)s - %(message)s")
@@ -154,4 +155,5 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
     app.include_router(annotations_router)
     app.include_router(experiments_router)
     app.include_router(runs_router)
+    app.include_router(datasets_router)
     return app
