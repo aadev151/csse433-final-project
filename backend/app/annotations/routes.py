@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request, Response
 
 from app.annotations.crud import TARGET_TYPE, Annotation, AnnotationInput, AnnotationUpdate, to_annotation
-from app.errors import conflict, not_found
+from app.errors import conflict, not_found, validation_error, store_down
 from app.records.models import WriteResponse
 from app.records.replicated import RecordNotFound, VersionConflict
 
@@ -16,6 +16,12 @@ def _records(request):
 
 def _fields_from_input(body):
     return body.model_dump(exclude={"version"})
+
+
+def _require_target(records, target_type, target_id):
+    target, _ = records.get(target_type, target_id)
+    if target is None:
+        raise validation_error(f"target {target_type}:{target_id} not found")
 
 
 @router.get("", response_model=list[Annotation])
@@ -33,6 +39,7 @@ def list_annotations(target_type: TARGET_TYPE, target_id: str, request: Request,
 @router.post("", response_model=WriteResponse[Annotation])
 def create_annotation(body: AnnotationInput, request: Request):
     records = _records(request)
+    _require_target(records, body.target_type, body.target_id)
     record, write = records.create(RECORD_TYPE, _fields_from_input(body))
     return WriteResponse[Annotation](record=to_annotation(record), write=write)
 
