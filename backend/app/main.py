@@ -23,8 +23,10 @@ from app.experiments.routes import router as experiments_router
 from app.runs.routes import router as runs_router
 from app.queue.redis_queue import RunQueue
 from app.queue.worker import RunWorker
+from app.faults.injector import FaultInjector
 
 log = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:  %(name)s - %(message)s")
 
 SYNC_INTERVAL_SECONDS = 5
 
@@ -120,7 +122,8 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
         worker_task = None
         if queue is not None:
             cassandra_store = find_cassandra_store(records)
-            worker = RunWorker(records, queue, cassandra_store)
+            fault_injector = FaultInjector(settings.fault_ssh_target)
+            worker = RunWorker(records, queue, cassandra_store, fault_injector)
             worker_task = asyncio.create_task(worker.run_forever())
         try:
             yield
