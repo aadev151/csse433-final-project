@@ -51,7 +51,7 @@ class ReplicatedRecords:
     Assumes a single backend process.
     """
 
-    def __init__(self, stores, pending_writes, snapshot, clock=utc_now_iso, id_factory=new_id):
+    def __init__(self, stores, pending_writes, snapshot, clock=utc_now_iso, id_factory=new_id, write_log=None):
         names = tuple(store.name for store in stores)
         if names != STORE_NAMES:
             raise ValueError(f"stores must be {list(STORE_NAMES)} in that order, got {list(names)}")
@@ -61,6 +61,7 @@ class ReplicatedRecords:
         self.clock = clock
         self.id_factory = id_factory
         self._write_lock = threading.Lock()
+        self.write_log = write_log
 
     # Writes
 
@@ -110,6 +111,7 @@ class ReplicatedRecords:
         with self._write_lock:
             if self._latest(record_type, record_id) is None:
                 raise RecordNotFound(record_type, record_id)
+            self._log_write("delete", record_type, record_id)
             self.snapshot.delete(record_type, record_id)
             written = []
             pending = []
@@ -187,10 +189,44 @@ class ReplicatedRecords:
     def pending_counts(self):
         return self.pending_writes.counts()
 
+    def _log_write(self, op, record_type, record_id, record=None):
+        if self.write_log is not None:
+            self.write_log.append(op, record_type, record_id, record)
+
+    def replay_from_log(self, store_name):
+        if self.write_log is None:
+            raise RuntimeError("no write log configured")
+
+        store = self._store_named(store_name)
+        latest = self.write_log.read_latest()
+        restored = deleted = already_current = 0
+        with self._write_lock:
+            for (record_type, record_id), entry in latest.items():
+                existing = store.get(record_type, record_id)
+                if entry["op"] == "delete":
+                    if existing is not None:
+                        store.delete(record_type, record_id)
+                        deleted += 1
+                    continue
+                if existing is None or existing["version"] < entry["record"]["version"]:
+                    store.put(record_type, entry["record"])
+                    restored += 1
+                else:
+                    already_current += 1
+
+        return {
+            "store": store_name,
+            "records_in_log": len(latest),
+            "restored": restored,
+            "deleted": deleted,
+            "already_current": already_current,
+        }
+
     # Helpers
 
     def _write_everywhere(self, record_type, record):
         require_record(record)
+        self._log_write("put", record_type, record["id"], record)
         self.snapshot.put(record_type, record)
         written = []
         pending = []

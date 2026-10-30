@@ -26,6 +26,7 @@ class Settings:
     redis_master_name: str = "mymaster"
     redis_password: Optional[str] = None
     fault_ssh_target: Optional[str] = None
+    kafka_bootstrap_servers: Optional[str] = None
 
 
 def _split(value):
@@ -65,6 +66,7 @@ def load_settings(env=None):
         redis_master_name=get("REDIS_MASTER_NAME", "mymaster"),
         redis_password=get("REDIS_PASSWORD"),
         fault_ssh_target=get("FAULT_SSH_TARGET"),
+        kafka_bootstrap_servers=get("KAFKA_BOOTSTRAP_SERVERS"),
     )
     _validate(settings)
     return settings
