@@ -9,14 +9,19 @@ log = logging.getLogger(__name__)
 POLL_INTERVAL = 2.0
 CASSANDRA_RETRY_INTERVAL = 5.0
 PROGRESS_STEPS = 10
-PROGRESS_STEP_DELAY = 0.5
+PROGRESS_STEP_DELAY = 2.0
+
+
+def _now_iso():
+    return time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
 
 class RunWorker:
 
-    def __init__(self, records, queue, cassandra_store):
+    def __init__(self, records, queue, cassandra_store, faults):
         self._records = records
         self._queue = queue
         self._cassandra = cassandra_store
+        self._faults = faults
 
     def _is_cassandra_up(self):
         try:
@@ -65,6 +70,17 @@ class RunWorker:
         self._update_run(run_id, done_fields)
         log.info("run %s finished", run_id)
 
+    def _clear_faults(self, run_id, active, started_at):
+        try:
+            self._faults.clear(active)
+        except Exception:
+            log.exception("failed to clear faults for run %s", run_id)
+
+        if active:
+            ended_at = _now_iso()
+            faults = [{**fault, "start": started_at, "end": ended_at} for fault in active]
+            self._update_run(run_id, {"faults": faults})
+
     def _process_one(self, run_id):
         record, _ = self._records.get("run", run_id)
         if record is None:
@@ -87,7 +103,21 @@ class RunWorker:
             queued_fields = {"status": "queued"}
             self._update_run(run_id, queued_fields)
 
-        self._execute_run(run_id)
+        active = []
+        started_at = _now_iso()
+        try:
+            active = self._faults.apply(record["config"])
+            faults = [{**fault, "start": started_at, "end": None} for fault in active]
+            self._update_run(run_id, {"faults": faults})
+            self._execute_run(run_id)
+
+        except Exception as error:
+            log.exception("run %s failed", run_id)
+            self._update_run(run_id, {"status": "failed", "finished_at": _now_iso(), "error": str(error)})
+
+        finally:
+            self._clear_faults(run_id, active, started_at)
+
         return True
 
     async def run_forever(self):

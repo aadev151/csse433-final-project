@@ -25,6 +25,7 @@ class Settings:
     redis_sentinels: tuple = ()
     redis_master_name: str = "mymaster"
     redis_password: Optional[str] = None
+    fault_ssh_target: Optional[str] = None
 
 
 def _split(value):
@@ -63,6 +64,7 @@ def load_settings(env=None):
         redis_sentinels=tuple(_host_port(item, 26379) for item in _split(get("REDIS_SENTINELS"))),
         redis_master_name=get("REDIS_MASTER_NAME", "mymaster"),
         redis_password=get("REDIS_PASSWORD"),
+        fault_ssh_target=get("FAULT_SSH_TARGET"),
     )
     _validate(settings)
     return settings
