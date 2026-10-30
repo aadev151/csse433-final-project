@@ -78,7 +78,7 @@ def build_queue(settings):
     return queue
 
 def find_cassandra_store(records):
-    for store in records.store:
+    for store in records.stores:
         if store.name == "cassandra": return store
     return None
 

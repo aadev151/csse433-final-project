@@ -74,6 +74,7 @@ class RunWorker:
         status = record.get("status")
         if status in ("done", "failed", "cancelled"):
             log.info("run %s already %s, skipping", run_id, status)
+            return True
 
         if not self._is_cassandra_up():
             log.warning("cassandra is down, holding run %s", run_id)

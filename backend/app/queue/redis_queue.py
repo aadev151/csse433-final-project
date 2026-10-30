@@ -13,7 +13,7 @@ class RunQueue:
     def push(self, run_ids):
         if not run_ids: return
         try:
-            self._client.rpush(QUEUE_KEY, run_ids)
+            self._client.rpush(QUEUE_KEY, *run_ids)
         except UNAVAILABLE_ERRORS:
             pass
 
