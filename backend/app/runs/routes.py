@@ -7,6 +7,7 @@ from app.records.replicated import RecordNotFound, VersionConflict
 import datetime
 
 RECORD_TYPE = "run"
+DONE_STATUSES = ("done", "failed", "cancelled")
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
@@ -63,9 +64,7 @@ def cancel_run(run_id: str, request: Request):
     records = _records(request)
     current = _get_or_404(records, run_id)
     current_status = current.get("status")
-    done_statuses = ("done", "failed", "cancelled")
-
-    if current_status in done_statuses:
+    if current_status in DONE_STATUSES:
         raise conflict(
             "already_finished", f"This run is already {current_status} and cannot be cancelled"
         )
@@ -88,6 +87,44 @@ def delete_run(run_id: str, request: Request):
      except RecordNotFound:
         raise not_found("run", run_id)
      return WriteResponse[None](record=None, write=write)
+
+@router.get("/api/queue", response_model=QueueState)
+def get_queue(request: Request, response: Response):
+    records = _records(request)
+    queue = _queue(request)
+    queued_ids = queue.peek()
+    all_runs, served_by = records.list(RECORD_TYPE)
+    response.headers["X-Served-By"] = served_by
+
+    runs_by_id = {}
+    for record in all_runs:
+        run_id = record.get("id")
+        runs_by_id[run_id] = record
+
+    running_run = None
+    for record in all_runs:
+        status = record.get("status")
+        if status == "running":
+            running_run = to_run(record)
+            break
+
+    waiting_runs = []
+    for position, run_id in enumerate(queued_ids, start = 1):
+        record = runs_by_id.get(run_id)
+        if record is None: continue
+        status = record.get("status")
+        if status in DONE_STATUSES: continue
+        run = to_run(record)
+        run.queue_position = position
+        waiting_runs.append(run)
+
+    queue_state = QueueState(
+        running=running_run,
+        waiting=waiting_runs,
+        blocked_reason=None,
+    )
+    return queue_state
+
 #-----------------------------------------------------------------------------------
 
 
