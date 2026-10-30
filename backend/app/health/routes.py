@@ -17,7 +17,8 @@ def _check(store):
 def get_health(request: Request):
     records = request.app.state.records
     stores = {store.name: _check(store) for store in records.stores}
-    stores["cassandra"]["nodes"] = []
+    cassandra = next(store for store in records.stores if store.name == "cassandra")
+    stores["cassandra"]["nodes"] = cassandra.nodes() if hasattr(cassandra, "nodes") else []
     
     up_count = sum(1 for store in stores.values() if store["up"])
     if up_count == len(stores):
