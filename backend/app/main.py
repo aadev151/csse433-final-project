@@ -138,6 +138,7 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
 
     app = FastAPI(title="Consistency Under Fire API", lifespan=lifespan)
     app.state.records = records
+    app.state.queue = queue
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.frontend_origins),
