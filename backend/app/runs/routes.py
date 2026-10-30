@@ -127,6 +127,16 @@ def get_queue(request: Request, response: Response):
 
 #-----------------------------------------------------------------------------------
 
+# Faults
+
+@router.get("/runs/{run_id}/faults")
+def get_faults(run_id: str, request: Request, response: Response):
+    record, served_by = _records(request).get(RECORD_TYPE, run_id)
+    response.headers["X-Served-By"] = served_by
+    if record is None:
+        raise not_found("run", run_id)
+    
+    return record.get("faults", [])
 
 
 # @router.get("/{run_id}/readings", response_model=list[Run])
