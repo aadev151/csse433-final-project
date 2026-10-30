@@ -13,6 +13,9 @@ router = APIRouter(prefix="/api/runs", tags=["runs"])
 def _records(request):
     return request.app.state.records
 
+def _queue(request):
+    return request.app.state.queue
+
 def _fields_from_input(body):
     return body.model_dump(exclude={"version"})
 
@@ -55,14 +58,26 @@ def list_runs(status: STATUS, request: Request, response: Response):
     ]
     return sorted(runs, key=lambda run: run.started_at, reverse=True)
 
-@router.patch("/{run_id}/cancel", response_model=WriteResponse[Run])
-def cance_run(run_id: str, body: RunInput, request: Request):
-     records = _records(request)
-     fields = _fields_from_input(body)
-     fields['status'] = "cancelled"
-     record, write = records.update(RECORD_TYPE, run_id, fields)
-     run = to_run(record)
-     return WriteResponse[Run](record = run, write = write)
+@router.post("/{run_id}/cancel", response_model=WriteResponse[Run])
+def cancel_run(run_id: str, request: Request):
+    records = _records(request)
+    current = _get_or_404(records, run_id)
+    current_status = current.get("status")
+    done_statuses = ("done", "failed", "cancelled")
+
+    if current_status in done_statuses:
+        raise conflict(
+            "already_finished", f"This run is already {current_status} and cannot be cancelled"
+        )
+
+    try:
+        record, write = records.update(RECORD_TYPE, run_id, {"status": "cancelled"})
+        _queue(request).remove(run_id)
+    except RecordNotFound:
+        raise not_found("run", run_id)
+    
+    run = to_run(record)
+    return WriteResponse[Run](record = run, write = write)
 
 @router.delete("/{run_id}", response_model=WriteResponse[None])
 def delete_run(run_id: str, request: Request):
@@ -153,4 +168,3 @@ def delete_run(run_id: str, request: Request):
 # def export_experiment(run_id: str, request: Request):
 #     _get_or_404(_records(request), run_id)
 #     raise not_found("export", "Run results are not available yet")
-
