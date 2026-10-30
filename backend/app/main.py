@@ -78,6 +78,11 @@ def build_queue(settings):
     queue = RunQueue(client)
     return queue
 
+def find_cassandra_store(records):
+    for store in records.store:
+        if store.name == "cassandra": return store
+    return None
+
 async def _sync_forever(records, interval):
     while True:
         await asyncio.sleep(interval)
