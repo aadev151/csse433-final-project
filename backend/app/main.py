@@ -25,6 +25,8 @@ from app.queue.redis_queue import RunQueue
 from app.queue.worker import RunWorker
 from app.faults.injector import FaultInjector
 from app.datasets.routes import router as datasets_router
+from app.records.write_log import WriteLog
+from app.recovery.routes import router as recovery_router
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:  %(name)s - %(message)s")
@@ -63,10 +65,12 @@ def build_stores(settings):
 
 def build_records(settings):
     data_dir = Path(settings.data_dir)
+    write_log = WriteLog(settings.kafka_bootstrap_servers) if settings.kafka_bootstrap_servers else None
     return ReplicatedRecords(
         build_stores(settings),
         PendingWrites(data_dir / "pending_writes.json"),
         SnapshotStore(data_dir / "snapshot.json"),
+        write_log=write_log,
     )
 
 def build_queue(settings):
@@ -156,4 +160,5 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
     app.include_router(experiments_router)
     app.include_router(runs_router)
     app.include_router(datasets_router)
+    app.include_router(recovery_router)
     return app
