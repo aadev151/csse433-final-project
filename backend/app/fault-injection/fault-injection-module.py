@@ -24,19 +24,30 @@ class FaultInjection:
         else:
             session.default_consistency_level = ConsistencyLevel.ALL
             
-    def insert_network_delay():
-        ...
+    def insert_network_delay(self):
+        subprocess.run(["/fault-injection.sh", "delay", f"{self.delay_ms}ms"])
+        subprocess.run(["/fault-injection.sh", "status"])
 
-    def insert_packet_loss():
-        ...
+    def insert_packet_loss(self):
+        subprocess.run(["/fault-injection.sh", "loss", f"{self.packet_loss_pct}%"])
+        subprocess.run(["/fault-injection.sh", "status"])
 
-    def insert_clock_skew():
-        ...
+    def insert_clock_skew(self):
+        subprocess.run(["/fault-injection.sh", "skew", f"{self.clock_skew_ms} seconds"])
+        subprocess.run(["/fault-injection.sh", "status"])
 
-    def insert_node_outage():
-        ...
+    def insert_node_outage(self):
+        if self.node_outage == "none":
+            subprocess.run(["/fault-injection.sh", "up"])
+        else:
+            subprocess.run(["/fault-injection.sh", "down"])
+        subprocess.run(["/fault-injection.sh", "status"])
 
-    def applyFaultInjection():
-        ...
+    def applyFaultInjection(self):
+        self.set_appropriate_consistency()
+        self.insert_network_delay()
+        self.insert_packet_loss()
+        self.insert_clock_skew()
+        self.insert_node_outage()
 
     
