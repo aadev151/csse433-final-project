@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import redis
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
@@ -20,6 +21,7 @@ from app.db.mongo_store import MongoStore
 from app.db.redis_store import RedisStore
 from app.experiments.routes import router as experiments_router
 from app.runs.routes import router as runs_router
+from app.queue.redis_queue import RunQueue
 
 
 log = logging.getLogger(__name__)
@@ -65,6 +67,16 @@ def build_records(settings):
         SnapshotStore(data_dir / "snapshot.json"),
     )
 
+def build_queue(settings):
+    if settings.store_mode == "memory": return None
+    client = redis.Redis.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            socket_timeout=2,
+            socket_connect_timeout=2,
+        )
+    queue = RunQueue(client)
+    return queue
 
 async def _sync_forever(records, interval):
     while True:
