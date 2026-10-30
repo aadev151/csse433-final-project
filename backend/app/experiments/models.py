@@ -68,7 +68,7 @@ class ExperimentInput(BaseModel):
      params: ExperimentParams
      replay_speed: StrictInt
      tags: list[StrictStr] = Field(default_factory=list)
-     notes: StrictStr = Field(default="", min_length=1)
+     notes: StrictStr = Field(default="")
      version: Optional[StrictInt] = Field(default=None, ge=1)
 
      @field_validator("name")
