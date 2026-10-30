@@ -95,3 +95,12 @@ class RedisStore(RecordStore):
 
     def close(self):
         self._client.close()
+
+    def ping(self):
+        start = time.perf_counter()
+        try:
+            self._client.ping()
+        except UNAVAILABLE_ERRORS as error:
+            raise StoreUnavailable(self.name, str(error)) from error
+        end = time.perf_counter()
+        return (end - start) * 1000
