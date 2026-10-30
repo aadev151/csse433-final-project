@@ -12,6 +12,9 @@ router = APIRouter(prefix="/api/experiments", tags=["experiments"])
 def _records(request):
     return request.app.state.records
 
+def _queue(request):
+    return request.app.state.queue
+
 def _fields_from_input(body):
     fields = body.model_dump(exclude = {"version"})
     fields["dates"] = {
@@ -192,6 +195,9 @@ def launch_experiment(experiment_id: str, request: Request):
                         run_record, _ = records.create("run", run_fields)
                         run_id = run_record["id"]
                         run_ids.append(run_id)
+
+    _queue(request).push(run_ids)
+    
     old_run_count = current.get("run_count", 0)
     new_run_count = old_run_count + len(run_ids)
     records.update(RECORD_TYPE, experiment_id, {"status": "queued", "run_count": new_run_count})

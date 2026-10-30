@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import redis
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
@@ -20,12 +21,12 @@ from app.db.mongo_store import MongoStore
 from app.db.redis_store import RedisStore
 from app.experiments.routes import router as experiments_router
 from app.runs.routes import router as runs_router
-
+from app.queue.redis_queue import RunQueue
+from app.queue.worker import RunWorker
 
 log = logging.getLogger(__name__)
 
 SYNC_INTERVAL_SECONDS = 5
-
 
 def build_stores(settings):
     if settings.store_mode == "memory":
@@ -65,6 +66,21 @@ def build_records(settings):
         SnapshotStore(data_dir / "snapshot.json"),
     )
 
+def build_queue(settings):
+    if settings.store_mode == "memory": return None
+    client = redis.Redis.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            socket_timeout=2,
+            socket_connect_timeout=2,
+        )
+    queue = RunQueue(client)
+    return queue
+
+def find_cassandra_store(records):
+    for store in records.stores:
+        if store.name == "cassandra": return store
+    return None
 
 async def _sync_forever(records, interval):
     while True:
@@ -76,7 +92,6 @@ async def _sync_forever(records, interval):
         except Exception:
             log.exception("background sync failed")
 
-
 def _close_stores(records):
     for store in records.stores:
         close = getattr(store, "close", None)
@@ -87,12 +102,13 @@ def _close_stores(records):
         except Exception:
             log.exception("failed to close %s", store.name)
 
-
 def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS):
     if settings is None:
         settings = load_settings()
     if records is None:
         records = build_records(settings)
+
+    queue = build_queue(settings)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -100,9 +116,20 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
         sync_task = None
         if sync_interval:
             sync_task = asyncio.create_task(_sync_forever(records, sync_interval))
+            
+        worker_task = None
+        if queue is not None:
+            cassandra_store = find_cassandra_store(records)
+            worker = RunWorker(records, queue, cassandra_store)
+            worker_task = asyncio.create_task(worker.run_forever())
         try:
             yield
         finally:
+            if worker_task is not None:
+                worker_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await worker_task
+
             if sync_task is not None:
                 sync_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -111,6 +138,7 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
 
     app = FastAPI(title="Consistency Under Fire API", lifespan=lifespan)
     app.state.records = records
+    app.state.queue = queue
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.frontend_origins),

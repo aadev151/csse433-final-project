@@ -7,11 +7,15 @@ from app.records.replicated import RecordNotFound, VersionConflict
 import datetime
 
 RECORD_TYPE = "run"
+DONE_STATUSES = ("done", "failed", "cancelled")
 
-router = APIRouter(prefix="/api/runs", tags=["runs"])
+router = APIRouter(prefix="/api", tags=["runs"])
 
 def _records(request):
     return request.app.state.records
+
+def _queue(request):
+    return request.app.state.queue
 
 def _fields_from_input(body):
     return body.model_dump(exclude={"version"})
@@ -25,7 +29,7 @@ def _get_or_404(records, run_id):
 #-----------------------------------------------------------------------------------
 # CRUD Operations
 
-@router.post("", response_model=WriteResponse[Run])
+@router.post("/runs", response_model=WriteResponse[Run])
 def create_run(body: RunInput, request: Request):
     records = _records(request)
     fields = _fields_from_input(body)
@@ -36,7 +40,7 @@ def create_run(body: RunInput, request: Request):
     run = to_run(record)
     return WriteResponse[Run](record=run, write=write)
 
-@router.get("/{run_id}", response_model=Run)
+@router.get("/runs/{run_id}", response_model=Run)
 def get_run(run_id: str, request: Request, response: Response):
     record, served_by = _records(request).get(RECORD_TYPE, run_id)
     response.headers["X-Served-By"] = served_by
@@ -44,7 +48,7 @@ def get_run(run_id: str, request: Request, response: Response):
             raise not_found("run", run_id)
     return to_run(record)
 
-@router.get("", response_model=list[Run])
+@router.get("/runs", response_model=list[Run])
 def list_runs(status: STATUS, request: Request, response: Response):
     records, served_by = _records(request).list(RECORD_TYPE)
     response.headers["X-Served-By"] = served_by
@@ -55,16 +59,26 @@ def list_runs(status: STATUS, request: Request, response: Response):
     ]
     return sorted(runs, key=lambda run: run.started_at, reverse=True)
 
-@router.patch("/{run_id}/cancel", response_model=WriteResponse[Run])
-def cance_run(run_id: str, body: RunInput, request: Request):
-     records = _records(request)
-     fields = _fields_from_input(body)
-     fields['status'] = "cancelled"
-     record, write = records.update(RECORD_TYPE, run_id, fields)
-     run = to_run(record)
-     return WriteResponse[Run](record = run, write = write)
+@router.post("/runs/{run_id}/cancel", response_model=WriteResponse[Run])
+def cancel_run(run_id: str, request: Request):
+    records = _records(request)
+    current = _get_or_404(records, run_id)
+    current_status = current.get("status")
+    if current_status in DONE_STATUSES:
+        raise conflict(
+            "already_finished", f"This run is already {current_status} and cannot be cancelled"
+        )
 
-@router.delete("/{run_id}", response_model=WriteResponse[None])
+    try:
+        record, write = records.update(RECORD_TYPE, run_id, {"status": "cancelled"})
+        _queue(request).remove(run_id)
+    except RecordNotFound:
+        raise not_found("run", run_id)
+    
+    run = to_run(record)
+    return WriteResponse[Run](record = run, write = write)
+
+@router.delete("/runs/{run_id}", response_model=WriteResponse[None])
 def delete_run(run_id: str, request: Request):
      records = _records(request)
      _get_or_404(records, run_id)
@@ -73,6 +87,44 @@ def delete_run(run_id: str, request: Request):
      except RecordNotFound:
         raise not_found("run", run_id)
      return WriteResponse[None](record=None, write=write)
+
+@router.get("/queue", response_model=QueueState)
+def get_queue(request: Request, response: Response):
+    records = _records(request)
+    queue = _queue(request)
+    queued_ids = queue.peek()
+    all_runs, served_by = records.list(RECORD_TYPE)
+    response.headers["X-Served-By"] = served_by
+
+    runs_by_id = {}
+    for record in all_runs:
+        run_id = record.get("id")
+        runs_by_id[run_id] = record
+
+    running_run = None
+    for record in all_runs:
+        status = record.get("status")
+        if status == "running":
+            running_run = to_run(record)
+            break
+
+    waiting_runs = []
+    for position, run_id in enumerate(queued_ids, start = 1):
+        record = runs_by_id.get(run_id)
+        if record is None: continue
+        status = record.get("status")
+        if status in DONE_STATUSES: continue
+        run = to_run(record)
+        run.queue_position = position
+        waiting_runs.append(run)
+
+    queue_state = QueueState(
+        running=running_run,
+        waiting=waiting_runs,
+        blocked_reason=None,
+    )
+    return queue_state
+
 #-----------------------------------------------------------------------------------
 
 
@@ -153,4 +205,3 @@ def delete_run(run_id: str, request: Request):
 # def export_experiment(run_id: str, request: Request):
 #     _get_or_404(_records(request), run_id)
 #     raise not_found("export", "Run results are not available yet")
-
