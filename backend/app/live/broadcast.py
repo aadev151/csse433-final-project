@@ -23,3 +23,10 @@ class RunBroadcast:
             self._client.publish(channel, payload)
         except UNAVAILABLE_ERRORS:
             log.debug("redis pub/sub unavailable, skipping publish for run %s", run_id)
+
+    def send_status(self, run_id, status):
+        message = {
+            "type":"status:",
+            "status": status
+        }
+        return self._publish(run_id, message)
