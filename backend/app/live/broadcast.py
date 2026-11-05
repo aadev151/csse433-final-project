@@ -51,3 +51,10 @@ class RunBroadcast:
             "latency_ms": latency_ms,
         }
         return self._publish(run_id, message)
+
+    def send_faults(self, run_id, active_faults):
+        message = {
+            "type": "faults",
+            "active": active_faults,
+        }
+        return self._publish(run_id, message)
