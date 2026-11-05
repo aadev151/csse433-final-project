@@ -38,3 +38,16 @@ class RunBroadcast:
             "replayed_until": replayed_until,
         }
         return self._publish(run_id, message)
+
+    def send_reading(self, run_id, signal_id, symbol, t, value, truth, staleness_ms, latency_ms):
+        message = {
+            "type": "reading",
+            "signal_id": signal_id,
+            "symbol": symbol,
+            "t": t,
+            "value": value,
+            "truth": truth,
+            "staleness_ms": staleness_ms,
+            "latency_ms": latency_ms,
+        }
+        return self._publish(run_id, message)
