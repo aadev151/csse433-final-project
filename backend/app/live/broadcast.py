@@ -26,7 +26,15 @@ class RunBroadcast:
 
     def send_status(self, run_id, status):
         message = {
-            "type":"status:",
-            "status": status
+            "type": "status",
+            "status": status,
+        }
+        return self._publish(run_id, message)
+
+    def send_progress(self, run_id, pct, replayed_until = None):
+        message = {
+            "type": "progress",
+            "pct": pct,
+            "replayed_until": replayed_until,
         }
         return self._publish(run_id, message)
