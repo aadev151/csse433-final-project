@@ -97,12 +97,14 @@ class RunWorker:
             log.warning("cassandra is down, holding run %s", run_id)
             waiting_fields = {"status": "waiting_for_cassandra"}
             self._update_run(run_id, waiting_fields)
+            self._broadcast.send_status(run_id, "waiting_for_cassandra")
             self._queue.push([run_id])
             return False
 
         if status == "waiting_for_cassandra":
             queued_fields = {"status": "queued"}
             self._update_run(run_id, queued_fields)
+            self._broadcast.send_status(run_id, "queued")
 
         active = []
         started_at = _now_iso()
@@ -115,6 +117,7 @@ class RunWorker:
         except Exception as error:
             log.exception("run %s failed", run_id)
             self._update_run(run_id, {"status": "failed", "finished_at": _now_iso(), "error": str(error)})
+            self._broadcast.send_status(run_id, "failed")
 
         finally:
             self._clear_faults(run_id, active, started_at)
