@@ -27,7 +27,7 @@ async def run_live(websocket: WebSocket, run_id: str):
     try:
         client = redis.Redis.from_url(
             redis_url,
-            decode_response = True,
+            decode_responses = True,
             socket_timeout = 2,
             socket_connect_timeout = 2,
         )
