@@ -37,3 +37,33 @@ async def run_live(websocket: WebSocket, run_id: str):
     except UNAVAILABLE_ERRORS:
         await websocket.close(code = 4003, reason = "redis unavailable")
         return
+
+    await websocket.accept()
+    log.info("live websocket opened for run %s", run_id)
+
+    try:
+        while True:
+            raw_message = await asyncio.to_thread(pubsub.get_message, timeout= 0.5)
+
+            if raw_message is not None:
+                message_type = raw_message.get("type")
+
+                if message_type == "message":
+                    data = raw_message.get("data")
+                    await websocket.send_text(data)
+
+                    try:
+                        parsed = json.loads(data)
+                        msg_type = parsed.get("type")
+                        status = parsed.get("status")
+                        terminal_statuses = ("done", "failed", "cancelled")
+                        if msg_type == "status" and status in terminal_statuses:
+                            await asyncio.sleep(0.1)
+                            await websocket.close(code = 1000, reason = "run finished")
+                            break
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+    except WebSocketDisconnect:
+        log.info("live websocket closed by client for run %s", run_id)
+    except Exception:
+        log.exception("live websocket error for run %s", run_id)
