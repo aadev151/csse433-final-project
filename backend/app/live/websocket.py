@@ -15,4 +15,11 @@ router = APIRouter()
 
 @router.websocket("/ws/runs/{run_id}/live")
 async def run_live(websocket: WebSocket, run_id: str):
-    pass
+    app = websocket.app
+    records = app.state.records
+    redis_url = app.state.redis_url
+    run = records.get("run", run_id)
+
+    if run is None:
+        await websocket.close(code = 4004, reason = "Run not found")
+        return
