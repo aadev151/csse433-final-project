@@ -21,5 +21,19 @@ async def run_live(websocket: WebSocket, run_id: str):
     run = records.get("run", run_id)
 
     if run is None:
-        await websocket.close(code = 4004, reason = "Run not found")
+        await websocket.close(code = 4004, reason = "run not found")
+        return
+
+    try:
+        client = redis.Redis.from_url(
+            redis_url,
+            decode_response = True,
+            socket_timeout = 2,
+            socket_connect_timeout = 2,
+        )
+        pubsub = client.pubsub(ignore_subscribe_messages = True)
+        channel_name = f"run:{run_id}"
+        pubsub.subscribe(channel_name)
+    except UNAVAILABLE_ERRORS:
+        await websocket.close(code = 4003, reason = "redis unavailable")
         return
