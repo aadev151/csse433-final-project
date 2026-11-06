@@ -17,11 +17,12 @@ def _now_iso():
 
 class RunWorker:
 
-    def __init__(self, records, queue, cassandra_store, faults):
+    def __init__(self, records, queue, cassandra_store, faults, broadcast):
         self._records = records
         self._queue = queue
         self._cassandra = cassandra_store
         self._faults = faults
+        self._broadcast = broadcast
 
     def _is_cassandra_up(self):
         try:
