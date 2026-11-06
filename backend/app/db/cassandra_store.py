@@ -141,3 +141,14 @@ class CassandraStore(RecordStore):
             self._cluster = None
             self._session = None
             self._statements = None
+
+    def nodes(self):
+        with self._lock:
+            cluster = self._cluster
+        
+        if cluster is None:
+            return []
+        return [
+            {"name": host.address, "status": "UN" if host.is_up else "DN"}
+            for host in cluster.metadata.all_hosts()
+        ]

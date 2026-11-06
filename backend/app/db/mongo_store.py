@@ -1,3 +1,5 @@
+import time
+
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 from app.records.checks import require_record, require_record_type, require_str
@@ -65,3 +67,11 @@ class MongoStore(RecordStore):
     def close(self):
         self._client.close()
 
+    def ping(self):
+        start = time.perf_counter()
+        try:
+            self._client.admin.command("ping")
+        except PyMongoError as error:
+            raise StoreUnavailable(self.name, str(error)) from error
+        end = time.perf_counter()
+        return (end - start) * 1000
