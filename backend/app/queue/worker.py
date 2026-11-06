@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+import random
 
 from app.records.replicated import RecordNotFound
 
@@ -40,35 +41,83 @@ class RunWorker:
             return None
 
     def _execute_run(self, run_id):
-        now = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-        started_fields = {"status": "running", "started_at": now}
-        record = self._update_run(run_id, started_fields)
-        if record is None:
-            return
+        run_record, _ = self._records.get("run", run_id)
+        if run_record is None: return
 
+        experiment_id = run_record.get("experiment_id", "")
+
+        experiment, _ = self._records.get("experiment", experiment_id)
+        signal_ids = []
+        symbols = []
+        if experiment is not None:
+            signal_ids = experiment.get("signal_ids", [])
+            symbols = experiment.get("symbols", ["BTCUSDT"])
+
+        now = _now_iso()
+        started_fields = {
+            "status": "running",
+            "started_at": now
+        }
+        record = self._update_run(run_id, started_fields)
+        if record is None: return
+
+        self._broadcast.send_status(run_id, "running")
+        self._broadcast.send_faults(run_id, [])
         log.info("run %s started", run_id)
+
+        # Temporary: simulated price until Features 8 & 9 provide real Cassandra reads
+        base_price = 42000.0
         for step in range(1, PROGRESS_STEPS + 1):
             time.sleep(PROGRESS_STEP_DELAY)
+
             pct = round((step / PROGRESS_STEPS) * 100, 1)
-            progress_fields = {"progress": {
-                "pct": pct,
-                "replayed_until": None,
+            step_time = _now_iso()
+
+            progress_fields = {
+                "progress": {
+                    "pct": pct,
+                    "replayed_until": step_time
                 }
             }
             record = self._update_run(run_id, progress_fields)
-            if record is None:
-                return
-        finished_time = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+            if record is None: return
+
+            self._broadcast.send_progress(run_id, pct, step_time)
+
+            for signal_id in signal_ids:
+                for symbol in symbols:
+                    noise = random.uniform(-50, 50)
+                    value = base_price + noise
+                    truth = base_price + random.uniform(-10, 10)
+                    staleness = random.uniform(0, 20)
+                    latency = random.uniform(1, 15)
+
+                    self._broadcast.send_reading(
+                        run_id,
+                        signal_id,
+                        symbol,
+                        step_time,
+                        round(value, 2),
+                        round(truth, 2),
+                        round(staleness, 2),
+                        round(latency, 2),
+                    )
+
+            base_price = base_price + random.uniform(-100, 100)
+
+        finished_time = _now_iso()
         done_fields = {
             "status": "done",
             "finished_at": finished_time,
             "progress": {
                 "pct": 100,
-                "replayed_until": None
+                "replayed_until": finished_time
             },
             "report": {},
         }
         self._update_run(run_id, done_fields)
+        self._broadcast.send_progress(run_id, 100, finished_time)
+        self._broadcast.send_status(run_id, "done")
         log.info("run %s finished", run_id)
 
     def _clear_faults(self, run_id, active, started_at):
