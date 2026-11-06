@@ -67,3 +67,10 @@ async def run_live(websocket: WebSocket, run_id: str):
         log.info("live websocket closed by client for run %s", run_id)
     except Exception:
         log.exception("live websocket error for run %s", run_id)
+    finally:
+        try:
+            pubsub.unsubscribe()
+            pubsub.close()
+            client.close()
+        except Exception:
+            pass
