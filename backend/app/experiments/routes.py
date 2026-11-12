@@ -162,6 +162,9 @@ def launch_experiment(experiment_id: str, request: Request):
     current_status = current.get("status")
     if current_status in ("queued", "running"):
         raise conflict("already_running", "This experiment is already queued or running")
+    symbols = current["symbols"]
+    replay_speed = current["replay_speed"]
+    dates = current["dates"]
     params = current["params"]
     consistency_levels = params["consistency"]
     delays = params["delay_ms"]
@@ -169,32 +172,36 @@ def launch_experiment(experiment_id: str, request: Request):
     skews = params["clock_skew_ms"]
     outages = params["node_outage"]
     run_ids = []
-    for consistency_level in consistency_levels:
-        for delay in delays:
-            for loss in losses:
-                for skew in skews:
-                    for outage in outages:
-                        run_config = {
-                            "consistency": consistency_level,
-                            "delay_ms": delay,
-                            "packet_loss_pct": loss,
-                            "clock_skew_ms": skew,
-                            "node_outage": outage,
-                        }
-                        run_fields = {
-                            "experiment_id": experiment_id,
-                            "config": run_config,
-                            "status": "queued",
-                            "queue_position": None,
-                            "progress": {"pct": 0, "replayed_until": None},
-                            "started_at": None,
-                            "finished_at": None,
-                            "error": None,
-                            "report": None,
-                        }
-                        run_record, _ = records.create("run", run_fields)
-                        run_id = run_record["id"]
-                        run_ids.append(run_id)
+    for symbol in symbols:
+        for consistency_level in consistency_levels:
+            for delay in delays:
+                for loss in losses:
+                    for skew in skews:
+                        for outage in outages:
+                            run_config = {
+                                "consistency": consistency_level,
+                                "delay_ms": delay,
+                                "packet_loss_pct": loss,
+                                "clock_skew_ms": skew,
+                                "node_outage": outage,
+                            }
+                            run_fields = {
+                                "experiment_id": experiment_id,
+                                "config": run_config,
+                                "symbol": symbol,
+                                "replay_speed": replay_speed,
+                                "dates": dates,
+                                "status": "queued",
+                                "queue_position": None,
+                                "progress": {"pct": 0, "replayed_until": None},
+                                "started_at": None,
+                                "finished_at": None,
+                                "error": None,
+                                "report": None,
+                            }
+                            run_record, _ = records.create("run", run_fields)
+                            run_id = run_record["id"]
+                            run_ids.append(run_id)
 
     _queue(request).push(run_ids)
     
