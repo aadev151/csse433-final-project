@@ -148,9 +148,9 @@ def main():
     # Parameters/input for a test run - makes use of the quotes and trades from 9th october 2023 because that is one of the days
     # for which we have the data
     symbol = "ETHUSDT"
-    trades_zip = "C:/CSSE433/csse433-final-project/backend/raw-data/ETHUSDT-trades-2023-10-09.zip"
-    quotes_zip = "C:/CSSE433/csse433-final-project/backend/raw-data/ETHUSDT-bookTicker-2023-10-09.zip"
-    window_start = datetime(2024, 3, 10, 0, 0, tzinfo=timezone.utc)
+    trades_zip = "C:/CSSE433/csse433-final-project/backend/raw-data/ETHUSDT-trades-2023-10-10.zip"
+    quotes_zip = "C:/CSSE433/csse433-final-project/backend/raw-data/ETHUSDT-bookTicker-2023-10-10.zip"
+    window_start = datetime(2023, 10, 10, 0, 0, tzinfo=timezone.utc)
     hours = 0.05
     speed = 10
 
