@@ -149,7 +149,7 @@ def main():
     # for which we have the data
     symbol = "ETHUSDT"
     trades_zip = "C:/CSSE433/csse433-final-project/backend/raw-data/ETHUSDT-trades-2023-10-09.zip"
-    quotes_zip = "../raw-data/ETHUSDT-bookTicker-2023-10-09.zip"
+    quotes_zip = "C:/CSSE433/csse433-final-project/backend/raw-data/ETHUSDT-bookTicker-2023-10-09.zip"
     window_start = datetime(2024, 3, 10, 0, 0, tzinfo=timezone.utc)
     hours = 0.05
     speed = 10
