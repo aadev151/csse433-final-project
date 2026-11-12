@@ -131,7 +131,7 @@ def replay_events(session, run_id, symbol, events, window_start_us, window_end_u
 def run_replay_events(run_id, symbol):
     hours = 0.05
     speed = 10
-    trades_zip = "backend/raw-data/ETHUSDT-trades-2023-10-09.zip"
+    trades_zip = "../raw-data/ETHUSDT-trades-2023-10-09.zip"
     quotes_zip = "../raw-data/ETHUSDT-bookTicker-2023-10-09.zip"
     window_start = datetime(2023, 10, 9, 0, 0, tzinfo=timezone.utc)
     window_start_us = int(window_start.timestamp() * 1_000_000)
