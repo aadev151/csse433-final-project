@@ -128,6 +128,19 @@ def replay_events(session, run_id, symbol, events, window_start_us, window_end_u
         "max_lag_ms": max_lag_ms,
     }
 
+def run_replay_events(run_id, symbol):
+    hours = 0.05
+    speed = 10
+    trades_zip = "backend/raw-data/ETHUSDT-trades-2023-10-09.zip"
+    quotes_zip = "../raw-data/ETHUSDT-bookTicker-2023-10-09.zip"
+    window_start = datetime(2023, 10, 9, 0, 0, tzinfo=timezone.utc)
+    window_start_us = int(window_start.timestamp() * 1_000_000)
+    window_end_us = window_start_us + int(hours * US_PER_HOUR)
+
+    cluster = Cluster(HOSTS)
+    session = cluster.connect()
+    events = merge_events_in_time_order(trades_zip, quotes_zip)
+    replay_events(session, run_id, symbol, events, window_start_us, window_end_us, speed)
 
 def main():
     run_id = "test1"

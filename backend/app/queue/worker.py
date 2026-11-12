@@ -3,6 +3,8 @@ import logging
 import time
 
 from app.records.replicated import RecordNotFound
+from app.replay_engine import merge_events_in_time_order, replay_events, run_replay_events
+from app.runs.models import to_run
 
 log = logging.getLogger(__name__)
 
@@ -40,10 +42,16 @@ class RunWorker:
 
     def _execute_run(self, run_id):
         now = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+        
         started_fields = {"status": "running", "started_at": now}
         record = self._update_run(run_id, started_fields)
         if record is None:
             return
+
+        # Replaying events via replay engine:
+        run = to_run(record)
+        symbol = "ETHUSDT"
+        run_replay_events(run_id, symbol)
 
         log.info("run %s started", run_id)
         for step in range(1, PROGRESS_STEPS + 1):
