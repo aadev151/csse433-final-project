@@ -18,7 +18,7 @@ from app.signals.routes import router as signals_router
 from app.annotations.routes import router as annotations_router
 from app.db.cassandra_store import CassandraStore
 from app.db.mongo_store import MongoStore
-from app.db.redis_store import RedisStore
+from app.db.redis_store import RedisStore, make_redis_client
 from app.experiments.routes import router as experiments_router
 from app.runs.routes import router as runs_router
 from app.queue.redis_queue import RunQueue
@@ -59,10 +59,15 @@ def build_stores(settings):
         timeout_seconds=timeout,
     )
 
-    redis_store = RedisStore(
-        url=settings.redis_url,
-        timeout_seconds=timeout,
-    )
+    if settings.redis_sentinels:
+        redis_store = RedisStore.from_sentinels(
+            settings.redis_sentinels,
+            settings.redis_master_name,
+            password=settings.redis_password,
+            timeout_seconds=timeout,
+        )
+    else:
+        redis_store = RedisStore.from_url(settings.redis_url, timeout_seconds=timeout)
 
     return [mongo, cassandra, redis_store]
 
@@ -79,12 +84,7 @@ def build_records(settings):
 
 def build_queue(settings):
     if settings.store_mode == "memory": return None
-    client = redis.Redis.from_url(
-            settings.redis_url,
-            decode_responses=True,
-            socket_timeout=2,
-            socket_connect_timeout=2,
-        )
+    client = make_redis_client(settings)
     queue = RunQueue(client)
     return queue
 
@@ -132,12 +132,7 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
         if queue is not None:
             cassandra_store = find_cassandra_store(records)
             fault_injector = FaultInjector(settings.fault_ssh_target)
-            broadcast_client = redis.Redis.from_url(
-                settings.redis_url,
-                decode_responses=True,
-                socket_timeout=2,
-                socket_connect_timeout=2,
-            )
+            broadcast_client = make_redis_client(settings)
             broadcast = RunBroadcast(broadcast_client)
             worker = RunWorker(records, queue, cassandra_store, fault_injector, broadcast, settings)
             worker_task = asyncio.create_task(worker.run_forever())
