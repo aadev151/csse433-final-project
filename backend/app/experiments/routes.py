@@ -162,6 +162,9 @@ def launch_experiment(experiment_id: str, request: Request):
     current_status = current.get("status")
     if current_status in ("queued", "running"):
         raise conflict("already_running", "This experiment is already queued or running")
+    symbols = current["symbols"]
+    replay_speed = current["replay_speed"]
+    dates = current["dates"]
     params = current["params"]
     consistency_levels = params["consistency"]
     delays = params["delay_ms"]
@@ -184,6 +187,9 @@ def launch_experiment(experiment_id: str, request: Request):
                         run_fields = {
                             "experiment_id": experiment_id,
                             "config": run_config,
+                            "symbols": symbols,
+                            "replay_speed": replay_speed,
+                            "dates": dates,
                             "status": "queued",
                             "queue_position": None,
                             "progress": {"pct": 0, "replayed_until": None},

@@ -2,13 +2,15 @@ import re
 from typing import Literal, Optional
 from app.records.replicated import WriteInfo
 from pydantic import BaseModel, Field, StrictInt, ConfigDict
-
+from app.experiments.models import DateRange
 from app.records.models import WriteInfo
 
 CONSISTENCY_TYPE = Literal["ONE", "QUORUM", "ALL"]
 NODE_OUTAGE = Literal["none", "one_node_down"]
 STATUS = Literal["queued", "waiting_for_cassandra", "running", "done", "failed", "cancelled"]
 KIND = Literal["delay", "packet_loss", "clock_skew", "node_down"]
+REPLAY_SPEEDS = Literal[1, 5, 10, 50]
+SYMBOLS = Literal["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 CASSANDRA_DOWN = Literal["cassandra_down"]
 
 class RunConfig(BaseModel):
@@ -50,6 +52,9 @@ class Run(BaseModel):
     id: str
     experiment_id: str
     config: RunConfig
+    symbols: Optional[list[SYMBOLS]] = None
+    replay_speed: Optional[REPLAY_SPEEDS] = None
+    dates: Optional[DateRange]
     status: STATUS
     queue_position: Optional[int] = None
     progress: Progress
@@ -83,4 +88,4 @@ class QueueState(BaseModel):
 
 
 def to_run(record):
-    return Run(**{field: record[field] for field in Run.model_fields})
+    return Run(**{field: record.get(field) for field in Run.model_fields})

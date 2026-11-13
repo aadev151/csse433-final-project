@@ -4,6 +4,11 @@ import time
 import random
 
 from app.records.replicated import RecordNotFound
+from app.replay_engine import merge_events_in_time_order, replay_events, run_replay_events
+from app.runs.models import to_run
+from app.experiments.models import to_experiment
+from datetime import datetime, timezone, date
+from dateutil.rrule import rrule, DAILY
 
 log = logging.getLogger(__name__)
 
@@ -60,10 +65,40 @@ class RunWorker:
         }
         record = self._update_run(run_id, started_fields)
         if record is None: return
+        
+        # -------------------------------------------Work done for replay engine ------------------------------------------------------------------------------
+        # Replaying events via replay engine:
+        # Parameters to find/get/compute: symbol, hours, speed, trades_zip, quotes_zip, window_start, window_start_us, window_end_us
+        run = to_run(record)
+        symbols = run["symbols"]
+        speed = run["replay_speed"]
+        dates = run["dates"]
+        start_date = date.fromisoformat(dates.start)
+        end_date = date.fromisoformat(dates.end)
+        hours = 24
+        # https://www.geeksforgeeks.org/python/python-iterating-through-a-range-of-dates/
+        for d in rrule(DAILY, dtstart=start_date, until=end_date):
+            formatted_date = d.strftime("%Y-%m-%d")
+            date_items = formatted_date.split("-")
+            window_start = datetime(int(date_items[0]), int(date_items[1]), int(date_items[2]), 0, 0, tzinfo=timezone.utc)
+            for symbol in symbols:
+                # Strategically naming file names
+                # for example, on my systems absolute address of these raw files downloaded looked like this
+                # trades_zip = "C:/CSSE433/csse433-final-project/backend/raw-data/ETHUSDT-trades-2023-10-10.zip"
+                # quotes_zip = "C:/CSSE433/csse433-final-project/backend/raw-data/ETHUSDT-bookTicker-2023-10-10.zip"
+                trades_zip = f"{symbol}-trades-{formatted_date}.zip"
+                quotes_zip = f"{symbol}-bookTicker-{formatted_date}.zip"
+                
 
+                # Replaying events for all the days in the date range
+                run_replay_events(run_id, symbol, hours, speed, trades_zip, quotes_zip, window_start)
+        
+        # -----------------------------------------------End of Work done for replay engine----------------------------------------
+        
         self._broadcast.send_status(run_id, "running")
         self._broadcast.send_faults(run_id, [])
         log.info("run %s started", run_id)
+
 
         # Temporary: simulated price until Features 8 & 9 provide real Cassandra reads
         base_price = 42000.0
