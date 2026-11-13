@@ -23,7 +23,8 @@ case "${1:-}" in
   
   clear)  in_container_net tc qdisc del dev "$(default_iface)" root 2>/dev/null || true ;;
   down)   sudo docker stop "$container" ;;
-  up)     sudo docker start "$container" ;;
+  up)     sudo docker start "$container"
+          for i in $(seq 1 60); do sudo docker exec "$container" nodetool status >/dev/null 2>&1 && break; sleep 2; done ;;
 
   # https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/7/html/system_administrators_guide/chap-configuring_the_date_and_time
   skew)   sudo timedatectl set-ntp false && sudo date -s "${2:-+2 seconds}" ;;
