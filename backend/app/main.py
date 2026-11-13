@@ -30,6 +30,7 @@ from app.recovery.routes import router as recovery_router
 from app.live.broadcast import RunBroadcast
 from app.live.websocket import router as live_router
 from app.health.routes import router as health_router
+from app.readings.routes import router as readings_router
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:  %(name)s - %(message)s")
@@ -174,4 +175,5 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
     app.include_router(recovery_router)
     app.include_router(live_router)
     app.include_router(health_router)
+    app.include_router(readings_router)
     return app
