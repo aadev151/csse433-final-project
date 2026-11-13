@@ -8,7 +8,7 @@ from app.datasets.importer import DownloadError, download_and_verify, file_name
 from app.datasets.models import DatasetImportInput
 from app.errors import ApiError, not_found, validation_error
 from app.records.models import STORE_NAMES, WriteInfo
-from app.records.replicated import RecordExists
+from app.records.replicated import RecordExists, RecordNotFound
 
 RAW_DATA_DIR = Path(__file__).resolve().parents[2] / "raw-data"
 FILE_PATTERN = re.compile(r"^(?P<symbol>[A-Z]+)-(?P<kind>trades|bookTicker)-(?P<day>\d{4}-\d{2}-\d{2})\.zip$")
@@ -170,12 +170,10 @@ def delete_dataset(dataset_id: str, request: Request):
     if not removed:
         raise not_found("dataset", dataset_id)
 
-    # Placeholder: no database was touched yet, so nothing is pending anywhere.
     write = WriteInfo.from_results([], [])
-    # TODO(Alex): delete the dataset record here as well, then return its write info, e.g.
-    #     try:
-    #         write = request.app.state.records.delete("dataset", dataset_id)
-    #     except RecordNotFound:
-    #         pass  # files copied into raw-data by hand never had a record
-    # (needs `from app.records.replicated import RecordNotFound` at the top)
+    try:
+        write = request.app.state.records.delete("dataset", dataset_id)
+    except RecordNotFound:
+        pass
+
     return {"record": None, "write": write}
