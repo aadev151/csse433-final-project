@@ -5,7 +5,7 @@ log = logging.getLogger(__name__)
 
 TARGET = "cass1"  # VM10's node will be faulted
 SCRIPT = "~/fault-injection.sh"
-TIMEOUT_SECONDS = 15
+TIMEOUT_SECONDS = 150
 
 
 class FaultInjector:
@@ -39,6 +39,8 @@ class FaultInjector:
         if not active:
             return
 
-        self._run("clear")
-        if any(fault["kind"] == "node_down" for fault in active):
+        kinds = {fault["kind"] for fault in active}
+        if "node_down" in kinds:
             self._run("up")
+        if "delay" in kinds or "packet_loss" in kinds:
+            self._run("clear")
