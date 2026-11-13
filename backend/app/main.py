@@ -27,6 +27,10 @@ from app.faults.injector import FaultInjector
 from app.datasets.routes import router as datasets_router
 from app.records.write_log import WriteLog
 from app.recovery.routes import router as recovery_router
+from app.live.broadcast import RunBroadcast
+from app.live.websocket import router as live_router
+from app.health.routes import router as health_router
+from app.readings.routes import router as readings_router
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:  %(name)s - %(message)s")
@@ -128,7 +132,14 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
         if queue is not None:
             cassandra_store = find_cassandra_store(records)
             fault_injector = FaultInjector(settings.fault_ssh_target)
-            worker = RunWorker(records, queue, cassandra_store, fault_injector)
+            broadcast_client = redis.Redis.from_url(
+                settings.redis_url,
+                decode_responses=True,
+                socket_timeout=2,
+                socket_connect_timeout=2,
+            )
+            broadcast = RunBroadcast(broadcast_client)
+            worker = RunWorker(records, queue, cassandra_store, fault_injector, broadcast)
             worker_task = asyncio.create_task(worker.run_forever())
         try:
             yield
@@ -147,6 +158,7 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
     app = FastAPI(title="Consistency Under Fire API", lifespan=lifespan)
     app.state.records = records
     app.state.queue = queue
+    app.state.redis_url = settings.redis_url
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.frontend_origins),
@@ -161,4 +173,7 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
     app.include_router(runs_router)
     app.include_router(datasets_router)
     app.include_router(recovery_router)
+    app.include_router(live_router)
+    app.include_router(health_router)
+    app.include_router(readings_router)
     return app
