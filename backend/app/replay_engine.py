@@ -5,17 +5,18 @@ import threading
 import time
 import zipfile
 from datetime import datetime, timezone
-
 from cassandra import ConsistencyLevel
 from cassandra.cluster import Cluster
 
-
+# IP Addresses of VMs
 HOSTS = ["137.112.104.145", "137.112.104.212", "137.112.104.214"]
+
 US_PER_HOUR = 3600_000_000
 TRADE_EVENT = 0
 QUOTE_EVENT = 1
 LAG_WARNING_MS = 1000
 
+# Cassandra queries to actually insert trade, quote, and latest data
 INSERTS = {
     "trade": "INSERT INTO market.trades (run_id, symbol, hour_bucket, event_us, trade_id, price, qty, "
              "buyer_is_maker, ingest_us) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -31,29 +32,30 @@ def read_csv_rows_from_zip(zip_path):
             if row[0].isdigit():
                 yield row
 
-
+# Used to get time from different files in microseconds to make it consistent
 def to_microseconds(raw_timestamp):
     timestamp = int(raw_timestamp)
     return timestamp * 1000 if timestamp < 10 ** 15 else timestamp
 
-
 def read_trades(trades_zip):
     # 0 id, 1 price, 2 qty, 3 quote_qty, 4 time, 5 is_buyer_maker
+    # We aren't making use of 7 - isBestMatch because that is True for most anyways
+    # Source of data format in zip files: https://github.com/binance/binance-public-data
     for row in read_csv_rows_from_zip(trades_zip):
         yield (to_microseconds(row[4]), TRADE_EVENT, int(row[0]), float(row[1]), float(row[2]), row[5] == "true")
-
 
 def read_quotes(quotes_zip):
     # 0 update_id, 1 best_bid_price, 2 best_bid_qty, 3 best_ask_price, 4 best_ask_qty, 5 transaction_time, 6 event_time
     for row in read_csv_rows_from_zip(quotes_zip):
         yield (to_microseconds(row[5]), QUOTE_EVENT, int(row[0]), float(row[1]), float(row[2]), float(row[3]), float(row[4]))
 
-
+# This function will take both trade and quotes data and order entries amongst them by timestamp
 def merge_events_in_time_order(trades_zip, quotes_zip):
     # order by time
     return heapq.merge(read_trades(trades_zip), read_quotes(quotes_zip))
 
 
+# This is the actual function which helps replay events themselves
 def replay_events(session, run_id, symbol, events, window_start_us, window_end_us, speed, consistency="ONE", max_writes_in_flight=128):
     prepared_inserts = {name: session.prepare(query) for name, query in INSERTS.items()}
     for statement in prepared_inserts.values():
@@ -126,13 +128,24 @@ def replay_events(session, run_id, symbol, events, window_start_us, window_end_u
         "max_lag_ms": max_lag_ms,
     }
 
+def run_replay_events(run_id, symbol, hours, speed, trades_zip, quotes_zip, window_start):
+    window_start_us = int(window_start.timestamp() * 1_000_000)
+    window_end_us = window_start_us + int(hours * US_PER_HOUR)
+
+    cluster = Cluster(HOSTS)
+    session = cluster.connect()
+    events = merge_events_in_time_order(trades_zip, quotes_zip)
+    replay_events(session, run_id, symbol, events, window_start_us, window_end_us, speed)
 
 def main():
     run_id = "test1"
-    symbol = "BTCUSDT"
-    trades_zip = "data/binance/testing/BTCUSDT-trades-2024-03-10.zip"
-    quotes_zip = "data/binance/testing/BTCUSDT-bookTicker-2024-03-10.zip"
-    window_start = datetime(2024, 3, 10, 0, 0, tzinfo=timezone.utc)
+
+    # Parameters/input for a test run - makes use of the quotes and trades from 9th october 2023 because that is one of the days
+    # for which we have the data
+    symbol = "ETHUSDT"
+    trades_zip = "C:/CSSE433/csse433-final-project/backend/raw-data/ETHUSDT-trades-2023-10-10.zip"
+    quotes_zip = "C:/CSSE433/csse433-final-project/backend/raw-data/ETHUSDT-bookTicker-2023-10-10.zip"
+    window_start = datetime(2023, 10, 10, 0, 0, tzinfo=timezone.utc)
     hours = 0.05
     speed = 10
 
@@ -144,7 +157,6 @@ def main():
     events = merge_events_in_time_order(trades_zip, quotes_zip)
     print(replay_events(session, run_id, symbol, events, window_start_us, window_end_us, speed))
     cluster.shutdown()
-
 
 if __name__ == "__main__":
     main()
