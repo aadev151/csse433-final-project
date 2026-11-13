@@ -52,9 +52,9 @@ class Run(BaseModel):
     id: str
     experiment_id: str
     config: RunConfig
-    symbol: SYMBOLS
-    replay_speed: REPLAY_SPEEDS
-    dates: DateRange
+    symbol: Optional[SYMBOLS] = None
+    replay_speed: Optional[REPLAY_SPEEDS] = None
+    dates: Optional[DateRange]
     status: STATUS
     queue_position: Optional[int] = None
     progress: Progress
@@ -88,4 +88,4 @@ class QueueState(BaseModel):
 
 
 def to_run(record):
-    return Run(**{field: record[field] for field in Run.model_fields})
+    return Run(**{field: record.get(field) for field in Run.model_fields})
