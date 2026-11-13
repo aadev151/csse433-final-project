@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Alert, Button, Group, Modal, Select, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import dayjs from 'dayjs';
 import { api } from '../api';
 import { SYMBOLS, type Dataset, type DatasetImportInput, type MarketSymbol, type SignalInputKind } from '../api/types';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -17,8 +16,8 @@ function ImportModal({ opened, onClose }: { opened: boolean; onClose: () => void
   const [symbol, setSymbol] = useState<MarketSymbol>('BTCUSDT');
   const [kind, setKind] = useState<SignalInputKind>('trades');
   const [range, setRange] = useState<[Date | null, Date | null]>([null, null]);
-  const start = range[0] ? dayjs(range[0]).format('YYYY-MM-DD') : null;
-  const end = range[1] ? dayjs(range[1]).format('YYYY-MM-DD') : start;
+  const start = range[0] ? range[0].toISOString().slice(0, 10) : null;
+  const end = range[1] ? range[1].toISOString().slice(0, 10) : start;
   const n = start && end ? dayCount(start, end) : 0;
 
   const imp = useWriteMutation({
