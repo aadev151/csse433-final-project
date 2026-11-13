@@ -139,7 +139,7 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
                 socket_connect_timeout=2,
             )
             broadcast = RunBroadcast(broadcast_client)
-            worker = RunWorker(records, queue, cassandra_store, fault_injector, broadcast)
+            worker = RunWorker(records, queue, cassandra_store, fault_injector, broadcast, settings)
             worker_task = asyncio.create_task(worker.run_forever())
         try:
             yield
