@@ -27,6 +27,8 @@ class Settings:
     redis_password: Optional[str] = None
     fault_ssh_target: Optional[str] = None
     kafka_bootstrap_servers: Optional[str] = None
+    raw_data_dirs: tuple = ("raw-data", "data/binance/testing")
+    replay_window_seconds: float = 120.0
 
 
 def _split(value):
@@ -67,6 +69,8 @@ def load_settings(env=None):
         redis_password=get("REDIS_PASSWORD"),
         fault_ssh_target=get("FAULT_SSH_TARGET"),
         kafka_bootstrap_servers=get("KAFKA_BOOTSTRAP_SERVERS"),
+        raw_data_dirs=_split(get("RAW_DATA_DIRS", "raw-data,data/binance/testing")),
+        replay_window_seconds=float(get("REPLAY_WINDOW_SECONDS", "120")),
     )
     _validate(settings)
     return settings
@@ -82,6 +86,8 @@ def _validate(settings):
         )
     if settings.store_timeout_seconds <= 0:
         raise ValueError("STORE_TIMEOUT_SECONDS must be greater than 0")
+    if settings.replay_window_seconds <= 0:
+        raise ValueError("REPLAY_WINDOW_SECONDS must be greater than 0")
     if settings.store_mode == "real":
         missing = []
         if not settings.mongo_uri:

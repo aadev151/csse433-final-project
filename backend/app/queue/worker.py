@@ -1,21 +1,17 @@
 import asyncio
 import logging
 import time
-import random
 
+from app.measure.execute import iso, measure_symbol, open_market_session
+from app.measure.report import build_report
+from app.measure.signals import spec_from_signal
 from app.records.replicated import RecordNotFound
-from app.replay_engine import merge_events_in_time_order, replay_events, run_replay_events
-from app.runs.models import to_run
-from app.experiments.models import to_experiment
-from datetime import datetime, timezone, date
-from dateutil.rrule import rrule, DAILY
+
 
 log = logging.getLogger(__name__)
 
 POLL_INTERVAL = 2.0
 CASSANDRA_RETRY_INTERVAL = 5.0
-PROGRESS_STEPS = 10
-PROGRESS_STEP_DELAY = 2.0
 
 
 def _now_iso():
@@ -23,12 +19,13 @@ def _now_iso():
 
 class RunWorker:
 
-    def __init__(self, records, queue, cassandra_store, faults, broadcast):
+    def __init__(self, records, queue, cassandra_store, faults, broadcast, settings):
         self._records = records
         self._queue = queue
         self._cassandra = cassandra_store
         self._faults = faults
         self._broadcast = broadcast
+        self._settings = settings
 
     def _is_cassandra_up(self):
         try:
@@ -45,116 +42,109 @@ class RunWorker:
             log.warning("run %s was deleted while being processed", run_id)
             return None
 
-    def _execute_run(self, run_id):
-        run_record, _ = self._records.get("run", run_id)
-        if run_record is None: return
+    def _is_cancelled(self, run_id):
+        record, _ = self._records.get("run", run_id)
+        if record is None:
+            return True
+        return record.get("status") == "cancelled"
 
-        experiment_id = run_record.get("experiment_id", "")
+    def _run_inputs(self, run):
+        experiment, _ = self._records.get("experiment", run.get("experiment_id", ""))
+        if experiment is None:
+            raise ValueError("this run's experiment no longer exists")
 
-        experiment, _ = self._records.get("experiment", experiment_id)
-        signal_ids = []
-        symbols = []
-        if experiment is not None:
-            signal_ids = experiment.get("signal_ids", [])
-            symbols = experiment.get("symbols", ["BTCUSDT"])
+        symbols = run.get("symbols") or experiment["symbols"]
+        speed = run.get("replay_speed") or experiment["replay_speed"]
+        dates = run.get("dates") or experiment["dates"]
 
-        now = _now_iso()
-        started_fields = {
-            "status": "running",
-            "started_at": now
-        }
-        record = self._update_run(run_id, started_fields)
-        if record is None: return
-        
-        # -------------------------------------------Work done for replay engine ------------------------------------------------------------------------------
-        # Replaying events via replay engine:
-        # Parameters to find/get/compute: symbol, hours, speed, trades_zip, quotes_zip, window_start, window_start_us, window_end_us
-        run = to_run(record)
-        symbols = run["symbols"]
-        speed = run["replay_speed"]
-        dates = run["dates"]
-        start_date = date.fromisoformat(dates.start)
-        end_date = date.fromisoformat(dates.end)
-        hours = 24
-        # https://www.geeksforgeeks.org/python/python-iterating-through-a-range-of-dates/
-        for d in rrule(DAILY, dtstart=start_date, until=end_date):
-            formatted_date = d.strftime("%Y-%m-%d")
-            date_items = formatted_date.split("-")
-            window_start = datetime(int(date_items[0]), int(date_items[1]), int(date_items[2]), 0, 0, tzinfo=timezone.utc)
-            for symbol in symbols:
-                # Strategically naming file names
-                # for example, on my systems absolute address of these raw files downloaded looked like this
-                # trades_zip = "C:/CSSE433/csse433-final-project/backend/raw-data/ETHUSDT-trades-2023-10-10.zip"
-                # quotes_zip = "C:/CSSE433/csse433-final-project/backend/raw-data/ETHUSDT-bookTicker-2023-10-10.zip"
-                trades_zip = f"{symbol}-trades-{formatted_date}.zip"
-                quotes_zip = f"{symbol}-bookTicker-{formatted_date}.zip"
-                
+        specs = []
+        for signal_id in experiment["signal_ids"]:
+            signal, _ = self._records.get("signal", signal_id)
+            if signal is None:
+                log.warning("run %s: signal %s no longer exists, skipping it", run["id"], signal_id)
+                continue
+            specs.append(spec_from_signal(signal))
+        if not specs:
+            raise ValueError("this experiment has no signals that still exist")
 
-                # Replaying events for all the days in the date range
-                run_replay_events(run_id, symbol, hours, speed, trades_zip, quotes_zip, window_start)
-        
-        # -----------------------------------------------End of Work done for replay engine----------------------------------------
-        
+        return symbols, speed, dates["start"], specs
+
+    def _send_point(self, run_id):
+        def send(point):
+            self._broadcast.send_reading(
+                run_id, point["signal_id"], point["symbol"], iso(point["t_us"]),
+                point["value"], point["truth"], point["staleness_ms"], point["latency_ms"],
+            )
+        return send
+    
+    def _report_progress(self, run_id, symbol_number, symbol_count, fraction, replayed_until):
+        pct = round((symbol_number + fraction) / symbol_count * 100, 1)
+        self._last_replayed_until = replayed_until
+        self._update_run(run_id, {"progress": {"pct": pct, "replayed_until": replayed_until}})
+        self._broadcast.send_progress(run_id, pct, replayed_until)
+
+    def _execute_run(self, run_id, active_faults):
+        run, _ = self._records.get("run", run_id)
+        if run is None:
+            return
+        symbols, speed, day, specs = self._run_inputs(run)
+        consistency = run["config"]["consistency"]
+
+        if self._update_run(run_id, {"status": "running", "started_at": _now_iso()}) is None:
+            return
         self._broadcast.send_status(run_id, "running")
-        self._broadcast.send_faults(run_id, [])
-        log.info("run %s started", run_id)
+        self._update_experiment_status(run.get("experiment_id"))
+        self._broadcast.send_faults(run_id, active_faults)
+        log.info("run %s started: %s at %s, speed %sx, day %s", run_id, symbols, consistency, speed, day)
 
+        points = []
+        failed = {"failed_reads": 0, "failed_writes": 0, "failed_rows": 0}
+        self._last_replayed_until = None
+        cluster, session = open_market_session(self._settings.cassandra_hosts, self._settings.cassandra_port)
+        try:
+            for index, symbol in enumerate(symbols):
 
-        # Temporary: simulated price until Features 8 & 9 provide real Cassandra reads
-        base_price = 42000.0
-        for step in range(1, PROGRESS_STEPS + 1):
-            time.sleep(PROGRESS_STEP_DELAY)
+                def on_progress(fraction, until):
+                    self._report_progress(run_id, index, len(symbols), fraction, until)
 
-            pct = round((step / PROGRESS_STEPS) * 100, 1)
-            step_time = _now_iso()
+                def should_stop():
+                    return self._is_cancelled(run_id)
 
-            progress_fields = {
-                "progress": {
-                    "pct": pct,
-                    "replayed_until": step_time
-                }
-            }
-            record = self._update_run(run_id, progress_fields)
-            if record is None: return
+                symbol_points, stats = measure_symbol(
+                    session, run_id, symbol, day,
+                    self._settings.replay_window_seconds, speed, consistency, specs,
+                    self._settings.raw_data_dirs,
+                    on_point=self._send_point(run_id),
+                    on_progress=on_progress,
+                    should_stop=should_stop,
+                )
+                points.extend(symbol_points)
+                for key in failed:
+                    failed[key] += stats[key]
+                if self._is_cancelled(run_id):
+                    break
+        finally:
+            cluster.shutdown()
 
-            self._broadcast.send_progress(run_id, pct, step_time)
+        if self._is_cancelled(run_id):
+            log.info("run %s was cancelled", run_id)
+            self._broadcast.send_status(run_id, "cancelled")
+            return
 
-            for signal_id in signal_ids:
-                for symbol in symbols:
-                    noise = random.uniform(-50, 50)
-                    value = base_price + noise
-                    truth = base_price + random.uniform(-10, 10)
-                    staleness = random.uniform(0, 20)
-                    latency = random.uniform(1, 15)
+        report = build_report(points, [spec.id for spec in specs])
+        notes = [f"{count} {key.replace('_', ' ')}" for key, count in failed.items() if count]
 
-                    self._broadcast.send_reading(
-                        run_id,
-                        signal_id,
-                        symbol,
-                        step_time,
-                        round(value, 2),
-                        round(truth, 2),
-                        round(staleness, 2),
-                        round(latency, 2),
-                    )
-
-            base_price = base_price + random.uniform(-100, 100)
-
-        finished_time = _now_iso()
-        done_fields = {
+        self._update_run(run_id, {
             "status": "done",
-            "finished_at": finished_time,
-            "progress": {
-                "pct": 100,
-                "replayed_until": finished_time
-            },
-            "report": {},
-        }
-        self._update_run(run_id, done_fields)
-        self._broadcast.send_progress(run_id, 100, finished_time)
+            "finished_at": _now_iso(),
+            "progress": {"pct": 100, "replayed_until": self._last_replayed_until},
+            "report": report,
+            "error": "; ".join(notes) or None,
+        })
+        self._broadcast.send_progress(run_id, 100, self._last_replayed_until)
         self._broadcast.send_status(run_id, "done")
-        log.info("run %s finished", run_id)
-
+        log.info("run %s finished with %d readings (%s)", run_id, len(points), notes or "no failures")
+    
     def _clear_faults(self, run_id, active, started_at):
         try:
             self._faults.clear(active)
@@ -196,7 +186,7 @@ class RunWorker:
             active = self._faults.apply(record["config"])
             faults = [{**fault, "start": started_at, "end": None} for fault in active]
             self._update_run(run_id, {"faults": faults})
-            self._execute_run(run_id)
+            self._execute_run(run_id, active)
 
         except Exception as error:
             log.exception("run %s failed", run_id)
@@ -205,13 +195,77 @@ class RunWorker:
 
         finally:
             self._clear_faults(run_id, active, started_at)
+            self._update_experiment_status(record.get("experiment_id"))
 
         return True
 
+    def _update_experiment_status(self, experiment_id):
+        if not experiment_id:
+            return
+
+        runs, _ = self._records.list("run")
+        statuses = [run.get("status") for run in runs if run.get("experiment_id") == experiment_id]
+        if not statuses:
+            return
+
+        if "running" in statuses:
+            new_status = "running"
+        elif "queued" in statuses or "waiting_for_cassandra" in statuses:
+            new_status = "queued"
+        elif "failed" in statuses:
+            new_status = "failed"
+        else:
+            new_status = "done"
+
+        try:
+            experimet, _ = self._records.get("experiment", experiment_id)
+            if experimet is not None and experimet.get("status") != new_status:
+                self._records.update("experiment", experiment_id, {"status": new_status})
+        except RecordNotFound:
+            pass  # Experiment was deleted while processing runs, ignore
+
+    def _recover_after_restart(self):
+        runs, _ = self._records.list("run")
+        touched_experiments = set()
+        for run in runs:
+            if run.get("status") == "running":
+                log.warning("run %s was interrupted by a restart, marking it failed", run["id"])
+                self._update_run(run["id"], {
+                    "status": "failed",
+                    "finished_at": _now_iso(),
+                    "error": "interrupted by a backend restart",
+                })
+                touched_experiments.add(run.get("experiment_id"))
+
+        for experiment_id in touched_experiments:
+            self._update_experiment_status(experiment_id)
+
+    def _next_run_id(self):
+        run_id = self._queue.pop()
+        if run_id is not None:
+            return run_id
+
+        try:
+            runs, _ = self._records.list("run")
+        except Exception:
+            return None
+
+        in_queue = set(self._queue.peek())
+        waiting = [
+            run for run in runs
+            if run.get("status") in ("queued", "waiting_for_cassandra") and run["id"] not in in_queue
+        ]
+        if not waiting:
+            return None
+
+        oldest = min(waiting, key=lambda run: run.get("created_at", ""))
+        return oldest["id"]
+
     async def run_forever(self):
         log.info("run worker started")
+        await asyncio.to_thread(self._recover_after_restart)
         while True:
-            run_id = await asyncio.to_thread(self._queue.pop)
+            run_id = await asyncio.to_thread(self._next_run_id)
             if run_id is None:
                 await asyncio.sleep(POLL_INTERVAL)
                 continue

@@ -66,8 +66,8 @@ const PRESETS = {
   clock_skew_ms: ['0', '10', '50', '200'],
 };
 
-const toDate = (d: string) => dayjs(d).toDate();
-const fmtDay = (d: Date | null) => (d ? dayjs(d).format('YYYY-MM-DD') : null);
+const toDate = (d: string) => new Date(`${d}T00:00:00Z`);
+const fmtDay = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
 function numberListError(values: string[], unit: string): string | null {
   if (values.length === 0) return 'Add at least one value';
