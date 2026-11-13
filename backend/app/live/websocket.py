@@ -7,6 +7,9 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
+from app.db.redis_store import make_redis_client 
+
+
 log = logging.getLogger(__name__)
 
 UNAVAILABLE_ERRORS = (RedisConnectionError, RedisTimeoutError)
@@ -17,7 +20,6 @@ router = APIRouter()
 async def run_live(websocket: WebSocket, run_id: str):
     app = websocket.app
     records = app.state.records
-    redis_url = app.state.redis_url
     run = records.get("run", run_id)
 
     if run is None:
@@ -25,12 +27,7 @@ async def run_live(websocket: WebSocket, run_id: str):
         return
 
     try:
-        client = redis.Redis.from_url(
-            redis_url,
-            decode_responses = True,
-            socket_timeout = 2,
-            socket_connect_timeout = 2,
-        )
+        client = make_redis_client(app.state.settings)
         pubsub = client.pubsub(ignore_subscribe_messages = True)
         channel_name = f"run:{run_id}"
         pubsub.subscribe(channel_name)
