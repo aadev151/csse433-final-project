@@ -52,7 +52,7 @@ class Run(BaseModel):
     id: str
     experiment_id: str
     config: RunConfig
-    symbol: Optional[SYMBOLS] = None
+    symbols: Optional[list[SYMBOLS]] = None
     replay_speed: Optional[REPLAY_SPEEDS] = None
     dates: Optional[DateRange]
     status: STATUS
