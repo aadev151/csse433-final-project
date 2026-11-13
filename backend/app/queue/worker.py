@@ -93,6 +93,7 @@ class RunWorker:
         if self._update_run(run_id, {"status": "running", "started_at": _now_iso()}) is None:
             return
         self._broadcast.send_status(run_id, "running")
+        self._update_experiment_status(run.get("experiment_id"))
         self._broadcast.send_faults(run_id, active_faults)
         log.info("run %s started: %s at %s, speed %sx, day %s", run_id, symbols, consistency, speed, day)
 
@@ -194,13 +195,77 @@ class RunWorker:
 
         finally:
             self._clear_faults(run_id, active, started_at)
+            self._update_experiment_status(record.get("experiment_id"))
 
         return True
 
+    def _update_experiment_status(self, experiment_id):
+        if not experiment_id:
+            return
+
+        runs, _ = self._records.list("run")
+        statuses = [run.get("status") for run in runs if run.get("experiment_id") == experiment_id]
+        if not statuses:
+            return
+
+        if "running" in statuses:
+            new_status = "running"
+        elif "queued" in statuses or "waiting_for_cassandra" in statuses:
+            new_status = "queued"
+        elif "failed" in statuses:
+            new_status = "failed"
+        else:
+            new_status = "done"
+
+        try:
+            experimet, _ = self._records.get("experiment", experiment_id)
+            if experimet is not None and experimet.get("status") != new_status:
+                self._records.update("experiment", experiment_id, {"status": new_status})
+        except RecordNotFound:
+            pass  # Experiment was deleted while processing runs, ignore
+
+    def _recover_after_restart(self):
+        runs, _ = self._records.list("run")
+        touched_experiments = set()
+        for run in runs:
+            if run.get("status") == "running":
+                log.warning("run %s was interrupted by a restart, marking it failed", run["id"])
+                self._update_run(run["id"], {
+                    "status": "failed",
+                    "finished_at": _now_iso(),
+                    "error": "interrupted by a backend restart",
+                })
+                touched_experiments.add(run.get("experiment_id"))
+
+        for experiment_id in touched_experiments:
+            self._update_experiment_status(experiment_id)
+
+    def _next_run_id(self):
+        run_id = self._queue.pop()
+        if run_id is not None:
+            return run_id
+
+        try:
+            runs, _ = self._records.list("run")
+        except Exception:
+            return None
+
+        in_queue = set(self._queue.peek())
+        waiting = [
+            run for run in runs
+            if run.get("status") in ("queued", "waiting_for_cassandra") and run["id"] not in in_queue
+        ]
+        if not waiting:
+            return None
+
+        oldest = min(waiting, key=lambda run: run.get("created_at", ""))
+        return oldest["id"]
+
     async def run_forever(self):
         log.info("run worker started")
+        await asyncio.to_thread(self._recover_after_restart)
         while True:
-            run_id = await asyncio.to_thread(self._queue.pop)
+            run_id = await asyncio.to_thread(self._next_run_id)
             if run_id is None:
                 await asyncio.sleep(POLL_INTERVAL)
                 continue
