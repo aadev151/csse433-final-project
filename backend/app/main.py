@@ -158,6 +158,7 @@ def create_app(records=None, settings=None, sync_interval=SYNC_INTERVAL_SECONDS)
     app = FastAPI(title="Consistency Under Fire API", lifespan=lifespan)
     app.state.records = records
     app.state.queue = queue
+    app.state.settings = settings
     app.state.redis_url = settings.redis_url
     app.add_middleware(
         CORSMiddleware,
